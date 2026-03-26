@@ -38,9 +38,16 @@ export const TeamCalculator: React.FC = () => {
       const isValid = sizes.every(d => d.size >= 5 && d.size <= 7);
 
       if (isValid) {
-        // Prefer distributions with more 5s and 6s
-        if (!bestResult || (!hasFour && bestResult.distribution.some(d => d.size === 4))) {
+        // Scoring: 6s are best (100 pts), 5s are second best (50 pts), 7s are third (10 pts)
+        const numSixes = sizes.find(d => d.size === 6)?.count || 0;
+        const numFives = sizes.find(d => d.size === 5)?.count || 0;
+        const numSevens = sizes.find(d => d.size === 7)?.count || 0;
+        
+        const score = (numSixes * 100) + (numFives * 50) + (numSevens * 10);
+
+        if (!bestResult || score > (bestResult as any).score) {
           bestResult = { teamCount: n, distribution: sizes, totalPlayers: playerCount };
+          (bestResult as any).score = score;
         }
       }
     }

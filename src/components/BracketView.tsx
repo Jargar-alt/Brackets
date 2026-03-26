@@ -1,14 +1,16 @@
 import React from 'react';
 import { Match, Team } from '../types';
 import { MatchCard } from './MatchCard';
+import { Trophy } from 'lucide-react';
 
 interface BracketViewProps {
   matches: Match[];
   teams: Team[];
   onUpdateScore: (matchId: string, team1Score: number, team2Score: number) => void;
+  isFinished?: boolean;
 }
 
-export const BracketView: React.FC<BracketViewProps> = ({ matches, teams, onUpdateScore }) => {
+export const BracketView: React.FC<BracketViewProps> = ({ matches, teams, onUpdateScore, isFinished }) => {
   const rounds = Array.from(new Set(matches.map(m => m.round))).sort((a: number, b: number) => a - b);
   
   const winnersMatches = matches.filter(m => m.bracketType !== 'losers');
@@ -35,6 +37,7 @@ export const BracketView: React.FC<BracketViewProps> = ({ matches, teams, onUpda
                         match={match}
                         teams={teams}
                         onUpdateScore={onUpdateScore}
+                        disabled={isFinished}
                       />
                       {match.nextMatchId && (
                         <div className="absolute right-0 w-12 h-px bg-zinc-300" />
@@ -49,8 +52,20 @@ export const BracketView: React.FC<BracketViewProps> = ({ matches, teams, onUpda
     );
   };
 
+  const finalMatch = matches.find(m => !m.nextMatchId && m.winnerId) || matches.sort((a,b) => b.round - a.round)[0];
+  const winner = teams.find(t => t.id === finalMatch?.winnerId);
+
   return (
     <div className="space-y-12">
+      {isFinished && winner && (
+        <div className="bg-grey-green/10 border border-grey-green/30 p-6 rounded-2xl text-center animate-in fade-in zoom-in duration-500">
+          <div className="inline-flex p-3 bg-grey-blue rounded-full mb-4 shadow-lg shadow-grey-blue/20">
+            <Trophy className="w-8 h-8 text-white" />
+          </div>
+          <h2 className="text-2xl font-bold text-zinc-900">Congratulations {winner.name}!</h2>
+          <p className="text-zinc-500">Tournament Champions</p>
+        </div>
+      )}
       {renderBracket(winnersMatches, winnersMatches.length === matches.length ? "Tournament Bracket" : "Winners Bracket")}
       {losersMatches.length > 0 && renderBracket(losersMatches, "Losers Bracket")}
     </div>
