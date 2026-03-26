@@ -1,0 +1,67 @@
+{
+  "entities": {
+    "Tournament": {
+      "title": "Tournament",
+      "description": "Main tournament container",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "format": { "type": "string", "enum": ["single", "double", "pool", "play-twice"] },
+        "isStarted": { "type": "boolean" },
+        "inviteCode": { "type": "string" },
+        "creatorId": { "type": "string" },
+        "rules": {
+          "type": "object",
+          "properties": {
+            "pointsToWin": { "type": "integer", "enum": [15, 21, 25, 0] },
+            "bestOf": { "type": "integer", "enum": [1, 3] },
+            "thirdSetTo": { "type": "integer", "enum": [15] },
+            "serveToWin": { "type": "boolean" }
+          }
+        }
+      },
+      "required": ["name", "format", "isStarted", "inviteCode", "creatorId"]
+    },
+    "Team": {
+      "title": "Team",
+      "description": "A team in the tournament",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "id": { "type": "string" }
+      },
+      "required": ["name", "id"]
+    },
+    "Match": {
+      "title": "Match",
+      "description": "A match in the tournament",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "team1Id": { "type": "string" },
+        "team2Id": { "type": "string" },
+        "score1": { "type": "integer" },
+        "score2": { "type": "integer" },
+        "winnerId": { "type": "string" },
+        "nextMatchId": { "type": "string" },
+        "round": { "type": "integer" },
+        "bracketType": { "type": "string", "enum": ["winners", "losers"] }
+      },
+      "required": ["id", "round"]
+    }
+  },
+  "firestore": {
+    "/tournaments/{tournamentId}": {
+      "schema": "Tournament",
+      "description": "Tournament metadata"
+    },
+    "/tournaments/{tournamentId}/teams/{teamId}": {
+      "schema": "Team",
+      "description": "Teams in the tournament"
+    },
+    "/tournaments/{tournamentId}/matches/{matchId}": {
+      "schema": "Match",
+      "description": "Matches in the tournament"
+    }
+  }
+}

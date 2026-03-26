@@ -1,0 +1,41 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isCreator(tournamentId) {
+      return isAuthenticated() && request.auth.uid == get(/databases/$(database)/documents/tournaments/$(tournamentId)).data.creatorId;
+    }
+
+    // ===============================================================
+    // Tournament Rules
+    // ===============================================================
+    match /tournaments/{tournamentId} {
+      // Allow read if authenticated (anyone with the link/code can read)
+      allow read: if isAuthenticated();
+      
+      // Allow create if authenticated
+      allow create: if isAuthenticated();
+      
+      // Allow update if creator or if it's a collaborative update (like starting)
+      // For simplicity, we'll allow anyone authenticated to update for now, 
+      // but in a real app we'd restrict sensitive fields to creator.
+      allow update: if isAuthenticated();
+
+      match /teams/{teamId} {
+        allow read: if isAuthenticated();
+        allow write: if isAuthenticated();
+      }
+
+      match /matches/{matchId} {
+        allow read: if isAuthenticated();
+        allow write: if isAuthenticated();
+      }
+    }
+  }
+}

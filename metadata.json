@@ -1,0 +1,5 @@
+{
+  "name": "Brackets",
+  "description": "A minimalist tournament organizer featuring interactive brackets, multiple play styles, and an intelligent team size calculator.",
+  "requestFramePermissions": []
+}

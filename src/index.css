@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --color-grey-blue: #64748b;
+  --color-grey-green: #849274;
+}
+
+@layer base {
+  body {
+    @apply bg-zinc-50 text-zinc-900 antialiased;
+  }
+}
+
+.bracket-connector {
+  @apply border-zinc-300 border-r-2 border-t-2;
+}
+
+.match-card {
+  @apply bg-white border border-zinc-200 rounded-lg shadow-sm overflow-hidden transition-all hover:border-zinc-400;
+}
+
