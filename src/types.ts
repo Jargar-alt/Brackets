@@ -5,6 +5,7 @@ export interface TournamentRules {
   bestOf: 1 | 3;
   thirdSetTo: 15;
   serveToWin: boolean;
+  winByTwo: boolean;
   winnerStays?: boolean;
   maxConsecutiveWins?: number;
   onMaxWins?: 'other-stays' | 'both-off';

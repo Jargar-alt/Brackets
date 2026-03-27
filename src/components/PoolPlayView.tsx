@@ -1,17 +1,19 @@
 import React from 'react';
-import { Match, Team } from '../types';
+import { Match, Team, TournamentRules } from '../types';
 import { cn } from '../lib/utils';
-import { Trophy } from 'lucide-react';
+import { Trophy, LayoutGrid, Clock } from 'lucide-react';
 import { MatchCard } from './MatchCard';
+import { NetQueue } from './NetQueue';
 
 interface PoolPlayViewProps {
   matches: Match[];
   teams: Team[];
   onUpdateScore: (matchId: string, team1Score: number, team2Score: number) => void;
   isFinished?: boolean;
+  rules: TournamentRules;
 }
 
-export const PoolPlayView: React.FC<PoolPlayViewProps> = ({ matches, teams, onUpdateScore, isFinished }) => {
+export const PoolPlayView: React.FC<PoolPlayViewProps> = ({ matches, teams, onUpdateScore, isFinished, rules }) => {
   const standings = teams.map(team => {
     const teamMatches = matches.filter(m => m.team1Id === team.id || m.team2Id === team.id);
     const wins = teamMatches.filter(m => m.winnerId === team.id).length;
@@ -40,6 +42,8 @@ export const PoolPlayView: React.FC<PoolPlayViewProps> = ({ matches, teams, onUp
           <p className="text-zinc-500">Tournament Champions</p>
         </div>
       )}
+
+      {!isFinished && <NetQueue matches={matches} teams={teams} />}
 
       <div className="bg-white rounded-xl border border-zinc-200 overflow-x-auto">
         <table className="w-full text-left border-collapse min-w-[400px]">
@@ -87,6 +91,7 @@ export const PoolPlayView: React.FC<PoolPlayViewProps> = ({ matches, teams, onUp
                 teams={teams}
                 onUpdateScore={onUpdateScore}
                 disabled={isFinished}
+                rules={rules}
               />
             </div>
           </div>

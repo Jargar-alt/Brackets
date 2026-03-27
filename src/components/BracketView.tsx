@@ -1,16 +1,18 @@
 import React from 'react';
-import { Match, Team } from '../types';
+import { Match, Team, TournamentRules } from '../types';
 import { MatchCard } from './MatchCard';
-import { Trophy } from 'lucide-react';
+import { Trophy, LayoutGrid, Clock } from 'lucide-react';
+import { NetQueue } from './NetQueue';
 
 interface BracketViewProps {
   matches: Match[];
   teams: Team[];
   onUpdateScore: (matchId: string, team1Score: number, team2Score: number) => void;
   isFinished?: boolean;
+  rules: TournamentRules;
 }
 
-export const BracketView: React.FC<BracketViewProps> = ({ matches, teams, onUpdateScore, isFinished }) => {
+export const BracketView: React.FC<BracketViewProps> = ({ matches, teams, onUpdateScore, isFinished, rules }) => {
   const rounds = Array.from(new Set(matches.map(m => m.round))).sort((a: number, b: number) => a - b);
   
   const winnersMatches = matches.filter(m => m.bracketType !== 'losers');
@@ -38,6 +40,7 @@ export const BracketView: React.FC<BracketViewProps> = ({ matches, teams, onUpda
                         teams={teams}
                         onUpdateScore={onUpdateScore}
                         disabled={isFinished}
+                        rules={rules}
                       />
                       {match.nextMatchId && (
                         <div className="absolute right-0 w-12 h-px bg-zinc-300" />
@@ -66,6 +69,9 @@ export const BracketView: React.FC<BracketViewProps> = ({ matches, teams, onUpda
           <p className="text-zinc-500">Tournament Champions</p>
         </div>
       )}
+      
+      {!isFinished && <NetQueue matches={matches} teams={teams} />}
+
       {renderBracket(winnersMatches, winnersMatches.length === matches.length ? "Tournament Bracket" : "Winners Bracket")}
       {losersMatches.length > 0 && renderBracket(losersMatches, "Losers Bracket")}
     </div>

@@ -3,7 +3,7 @@ import { TournamentFormat, Team, Match, TournamentRules } from './types';
 import { TeamCalculator } from './components/TeamCalculator';
 import { BracketView } from './components/BracketView';
 import { PoolPlayView } from './components/PoolPlayView';
-import { Trophy, Settings, Play, Plus, Trash2, LayoutGrid, GitMerge, Repeat, Users, Share2, LogIn, ShieldCheck, Info, RefreshCw } from 'lucide-react';
+import { Trophy, Settings, Play, Plus, Trash2, LayoutGrid, GitMerge, Repeat, Users, Share2, LogIn, ShieldCheck, Info, RefreshCw, CheckCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
 import { db, auth } from './firebase';
@@ -17,6 +17,7 @@ import {
   where, 
   getDocs,
   addDoc,
+  deleteDoc,
   serverTimestamp 
 } from 'firebase/firestore';
 import { 
@@ -34,6 +35,7 @@ const DEFAULT_RULES: TournamentRules = {
   bestOf: 3,
   thirdSetTo: 15,
   serveToWin: false,
+  winByTwo: true,
   winnerStays: true,
   maxConsecutiveWins: 3,
   onMaxWins: 'other-stays'
@@ -41,26 +43,75 @@ const DEFAULT_RULES: TournamentRules = {
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
-  const [tournamentId, setTournamentId] = useState<string | null>(null);
+  const [tournamentId, setTournamentId] = useState<string | null>(() => {
+    return localStorage.getItem('tournament_id');
+  });
   const [inviteCode, setInviteCode] = useState<string>('');
   const [joinCode, setJoinCode] = useState<string>('');
-  const [rules, setRules] = useState<TournamentRules>(DEFAULT_RULES);
-  const [teams, setTeams] = useState<Team[]>([
-    { id: '1', name: 'Team 1' },
-    { id: '2', name: 'Team 2' },
-    { id: '3', name: 'Team 3' },
-    { id: '4', name: 'Team 4' },
-  ]);
-  const [format, setFormat] = useState<TournamentFormat>('single');
-  const [matches, setMatches] = useState<Match[]>([]);
-  const [isStarted, setIsStarted] = useState(false);
-  const [isFinished, setIsFinished] = useState(false);
+  const [teams, setTeams] = useState<Team[]>(() => {
+    const saved = localStorage.getItem('tournament_teams');
+    return saved ? JSON.parse(saved) : [
+      { id: '1', name: 'Team 1' },
+      { id: '2', name: 'Team 2' },
+      { id: '3', name: 'Team 3' },
+      { id: '4', name: 'Team 4' },
+    ];
+  });
+  const [format, setFormat] = useState<TournamentFormat>(() => {
+    const saved = localStorage.getItem('tournament_format');
+    return (saved as TournamentFormat) || 'single';
+  });
+  const [matches, setMatches] = useState<Match[]>(() => {
+    const saved = localStorage.getItem('tournament_matches');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [isStarted, setIsStarted] = useState(() => {
+    return localStorage.getItem('tournament_isStarted') === 'true';
+  });
+  const [isFinished, setIsFinished] = useState(() => {
+    return localStorage.getItem('tournament_isFinished') === 'true';
+  });
   const [isCreator, setIsCreator] = useState(false);
-  const [activeTab, setActiveTab] = useState<'tournaments' | 'winners-list'>('tournaments');
-  const [numNets, setNumNets] = useState(1);
+  const [activeTab, setActiveTab] = useState<'tournaments' | 'winners-list'>(() => {
+    return (localStorage.getItem('tournament_activeTab') as any) || 'tournaments';
+  });
+  const [numNets, setNumNets] = useState(() => {
+    const saved = localStorage.getItem('tournament_numNets');
+    return saved ? parseInt(saved) : 1;
+  });
   const [preSignupCount, setPreSignupCount] = useState(8);
-  const [queue, setQueue] = useState<string[]>([]);
-  const [activeNets, setActiveNets] = useState<{ [key: number]: string | null }>({});
+  const [queue, setQueue] = useState<string[]>(() => {
+    const saved = localStorage.getItem('tournament_queue');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [activeNets, setActiveNets] = useState<{ [key: number]: string | null }>(() => {
+    const saved = localStorage.getItem('tournament_activeNets');
+    return saved ? JSON.parse(saved) : {};
+  });
+  const [rules, setRules] = useState<TournamentRules>(() => {
+    const saved = localStorage.getItem('tournament_rules');
+    return saved ? JSON.parse(saved) : DEFAULT_RULES;
+  });
+
+  // Persistence for local mode and tournamentId
+  useEffect(() => {
+    if (tournamentId) {
+      localStorage.setItem('tournament_id', tournamentId);
+      return;
+    } else {
+      localStorage.removeItem('tournament_id');
+    }
+    localStorage.setItem('tournament_teams', JSON.stringify(teams));
+    localStorage.setItem('tournament_matches', JSON.stringify(matches));
+    localStorage.setItem('tournament_queue', JSON.stringify(queue));
+    localStorage.setItem('tournament_activeNets', JSON.stringify(activeNets));
+    localStorage.setItem('tournament_format', format);
+    localStorage.setItem('tournament_isStarted', String(isStarted));
+    localStorage.setItem('tournament_isFinished', String(isFinished));
+    localStorage.setItem('tournament_activeTab', activeTab);
+    localStorage.setItem('tournament_numNets', String(numNets));
+    localStorage.setItem('tournament_rules', JSON.stringify(rules));
+  }, [teams, matches, queue, activeNets, format, isStarted, isFinished, activeTab, numNets, rules, tournamentId]);
 
   // Auth
   useEffect(() => {
@@ -157,25 +208,43 @@ export default function App() {
     }
   };
 
-  const addTeam = async () => {
-    const nextNum = teams.length > 0 ? Math.max(...teams.map(t => parseInt(t.id) || 0)) + 1 : 1;
-    const newId = nextNum.toString();
-    const newTeam = { id: newId, name: `Team ${newId}` };
+  const addTeam = async (name?: string) => {
+    console.log('Adding team:', name);
+    const newId = `team-${Date.now()}`;
     
     if (tournamentId) {
+      const newTeam = { id: newId, name: name || `Team ${teams.length + 1}`, consecutiveWins: 0 };
       await setDoc(doc(db, 'tournaments', tournamentId, 'teams', newId), newTeam);
+      if (format === 'winners-list') {
+        await onJoinQueue(newId);
+      }
     } else {
-      setTeams([...teams, newTeam]);
+      setTeams(prev => {
+        const newTeam = { id: newId, name: name || `Team ${prev.length + 1}`, consecutiveWins: 0 };
+        const updated = [...prev, newTeam];
+        if (format === 'winners-list') {
+          // Call onJoinQueue with the latest teams and queue
+          onJoinQueue(newId, updated);
+        }
+        return updated;
+      });
     }
   };
 
   const removeTeam = async (id: string) => {
     if (tournamentId) {
-      // For simplicity, we'll just update local state if not started, 
-      // but in a real app we'd delete from Firestore
-      setTeams(teams.filter(t => t.id !== id));
+      await deleteDoc(doc(db, 'tournaments', tournamentId, 'teams', id));
+      // If it's in the queue, remove it
+      if (queue.includes(id)) {
+        const newQueue = queue.filter(tid => tid !== id);
+        await updateDoc(doc(db, 'tournaments', tournamentId), { queue: newQueue });
+      }
     } else {
-      setTeams(teams.filter(t => t.id !== id));
+      const updatedTeams = teams.filter(t => t.id !== id);
+      setTeams(updatedTeams);
+      if (queue.includes(id)) {
+        setQueue(queue.filter(tid => tid !== id));
+      }
     }
   };
 
@@ -200,12 +269,18 @@ export default function App() {
 
     if (format === 'single') {
       initialMatches = generateSingleElimination(teams);
+      initialMatches = autoAdvanceByes(initialMatches);
+      initialMatches = assignNets(initialMatches, numNets);
     } else if (format === 'double') {
       initialMatches = generateDoubleElimination(teams);
+      initialMatches = autoAdvanceByes(initialMatches);
+      initialMatches = assignNets(initialMatches, numNets);
     } else if (format === 'pool') {
       initialMatches = generatePoolPlay(teams);
+      initialMatches = assignNets(initialMatches, numNets);
     } else if (format === 'play-twice') {
       initialMatches = generatePlayTwice(teams);
+      initialMatches = assignNets(initialMatches, numNets);
     } else if (format === 'winners-list') {
       let currentTeams = teams;
       if (teams.length === 0 && preSignupCount > 0) {
@@ -286,8 +361,13 @@ export default function App() {
   const abortTournament = async () => {
     if (window.confirm("Are you sure you want to abort the tournament and return home? All progress will be lost.")) {
       if (tournamentId) {
+        // Clear matches in Firestore
+        const matchesRef = collection(db, 'tournaments', tournamentId, 'matches');
+        const snapshot = await getDocs(matchesRef);
+        const deletePromises = snapshot.docs.map(doc => deleteDoc(doc.ref));
+        await Promise.all(deletePromises);
+        
         await updateDoc(doc(db, 'tournaments', tournamentId), { isStarted: false, isFinished: false });
-        // In a real app we might want to delete matches too
       }
       setIsStarted(false);
       setIsFinished(false);
@@ -306,48 +386,103 @@ export default function App() {
     }
   };
 
-  const exportAsImage = async () => {
-    const html2canvas = (await import('html2canvas')).default;
-    const element = document.getElementById('tournament-view');
-    if (!element) return;
-
-    const canvas = await html2canvas(element, {
-      backgroundColor: '#f9fafb',
-      scale: 2,
-      logging: false,
-      useCORS: true
-    });
-
-    const link = document.createElement('a');
-    link.download = `tournament-results-${new Date().getTime()}.png`;
-    link.href = canvas.toDataURL('image/png');
-    link.click();
+  const restartTournament = async () => {
+    if (window.confirm("Start over? This will clear all current scores and matches.")) {
+      if (tournamentId) {
+        // Clear matches in Firestore
+        const matchesRef = collection(db, 'tournaments', tournamentId, 'matches');
+        const snapshot = await getDocs(matchesRef);
+        const deletePromises = snapshot.docs.map(doc => deleteDoc(doc.ref));
+        await Promise.all(deletePromises);
+        
+        // Reset tournament state
+        await updateDoc(doc(db, 'tournaments', tournamentId), {
+          isStarted: false,
+          isFinished: false,
+          queue: [],
+          activeNets: {}
+        });
+      }
+      
+      setMatches([]);
+      setQueue([]);
+      setActiveNets({});
+      setIsStarted(false);
+      setIsFinished(false);
+      
+      // Use a timeout to ensure state is cleared before starting again
+      setTimeout(() => {
+        startTournament();
+      }, 200);
+    }
   };
 
-  const generateSingleElimination = (teams: Team[], prefix = 'm', bracketType: 'winners' | 'losers' = 'winners'): Match[] => {
+  const resetToSetup = async () => {
+    if (window.confirm("Start a new tournament? This will clear current results.")) {
+      if (tournamentId) {
+        // Clear matches in Firestore
+        const matchesRef = collection(db, 'tournaments', tournamentId, 'matches');
+        const snapshot = await getDocs(matchesRef);
+        const deletePromises = snapshot.docs.map(doc => deleteDoc(doc.ref));
+        await Promise.all(deletePromises);
+        
+        // Reset tournament state
+        await updateDoc(doc(db, 'tournaments', tournamentId), {
+          isStarted: false,
+          isFinished: false,
+          queue: [],
+          activeNets: {}
+        });
+      }
+      
+      setMatches([]);
+      setQueue([]);
+      setActiveNets({});
+      setIsStarted(false);
+      setIsFinished(false);
+      setTournamentId(null);
+      localStorage.removeItem('tournament_id');
+    }
+  };
+
+  const generateSingleElimination = (teams: Team[], prefix = 'w', bracketType: 'winners' | 'losers' = 'winners'): Match[] => {
     const numTeams = teams.length;
-    const numRounds = Math.ceil(Math.log2(numTeams));
-    const bracketSize = Math.pow(2, numRounds);
+    const k = Math.ceil(Math.log2(numTeams));
+    const bracketSize = Math.pow(2, k);
     const matches: Match[] = [];
 
+    // Standard seeding: 1 vs 8, 4 vs 5, 2 vs 7, 3 vs 6
+    const getSeedOrder = (size: number): number[] => {
+      if (size === 2) return [0, 1];
+      const prev = getSeedOrder(size / 2);
+      const res: number[] = [];
+      for (const s of prev) {
+        res.push(s);
+        res.push(size - 1 - s);
+      }
+      return res;
+    };
+
+    const seedOrder = getSeedOrder(bracketSize);
+    
     // Round 1
     for (let i = 0; i < bracketSize / 2; i++) {
-      const team1Idx = i;
-      const team2Idx = bracketSize - 1 - i;
+      const t1Idx = seedOrder[i * 2];
+      const t2Idx = seedOrder[i * 2 + 1];
       
       matches.push({
         id: `${prefix}1-${i}`,
-        team1Id: team1Idx < numTeams ? teams[team1Idx].id : null,
-        team2Id: team2Idx < numTeams ? teams[team2Idx].id : null,
+        team1Id: t1Idx < numTeams ? teams[t1Idx].id : null,
+        team2Id: t2Idx < numTeams ? teams[t2Idx].id : null,
         round: 1,
         bracketType,
-        nextMatchId: numRounds > 1 ? `${prefix}2-${Math.floor(i / 2)}` : null
+        nextMatchId: k > 1 ? `${prefix}2-${Math.floor(i / 2)}` : null
       });
     }
 
     // Subsequent rounds
-    for (let r = 2; r <= numRounds; r++) {
-      const matchesInRound = Math.pow(2, numRounds - r);
+    for (let r = 2; r <= k; r++) {
+      const matchesInRound = Math.pow(2, k - r);
       for (let i = 0; i < matchesInRound; i++) {
         matches.push({
           id: `${prefix}${r}-${i}`,
@@ -355,7 +490,7 @@ export default function App() {
           team2Id: null,
           round: r,
           bracketType,
-          nextMatchId: r < numRounds ? `${prefix}${r + 1}-${Math.floor(i / 2)}` : null
+          nextMatchId: r < k ? `${prefix}${r + 1}-${Math.floor(i / 2)}` : null
         });
       }
     }
@@ -365,79 +500,174 @@ export default function App() {
 
   const generateDoubleElimination = (teams: Team[]): Match[] => {
     const numTeams = teams.length;
-    const numRounds = Math.ceil(Math.log2(numTeams));
-    const bracketSize = Math.pow(2, numRounds);
+    const k = Math.ceil(Math.log2(numTeams));
+    const bracketSize = Math.pow(2, k);
     
-    // 1. Winners Bracket (WB)
+    // 1. Winners Bracket
     const winners = generateSingleElimination(teams, 'w', 'winners');
     
-    // 2. Losers Bracket (LB)
-    // LB has roughly 2 * (numRounds - 1) rounds
+    // 2. Losers Bracket
     const losers: Match[] = [];
+    const numLBRounds = k > 1 ? 2 * k - 2 : 0;
     
-    // Round 1 of LB receives losers from Round 1 of WB
-    // Round 2 of LB receives losers from Round 2 of WB
-    // and so on.
-    
-    // For simplicity, we'll create a structure that can hold the losers
-    // A proper LB is complex, but we'll create enough matches to accommodate everyone
-    for (let r = 1; r <= (numRounds - 1) * 2; r++) {
-      // Round 1, 3, 5... are "entry" rounds from WB
-      // Round 2, 4, 6... are "consolidation" rounds
-      const matchesInRound = Math.pow(2, Math.floor((numRounds - 1 - (r/2))));
-      if (matchesInRound < 1) break;
-      
+    for (let r = 1; r <= numLBRounds; r++) {
+      const matchesInRound = Math.pow(2, k - 1 - Math.floor((r + 1) / 2));
       for (let i = 0; i < matchesInRound; i++) {
+        // nextMatchId logic:
+        // If r is odd (Consolidation): l(r+1)-i (Winner goes to Team 1)
+        // If r is even (Entry): l(r+1)-Math.floor(i/2) (Winner goes to Team 1 or 2)
+        let nextMatchId = null;
+        if (r < numLBRounds) {
+          if (r % 2 !== 0) {
+            nextMatchId = `l${r + 1}-${i}`;
+          } else {
+            nextMatchId = `l${r + 1}-${Math.floor(i / 2)}`;
+          }
+        } else {
+          nextMatchId = 'gf-1';
+        }
+
         losers.push({
           id: `l${r}-${i}`,
           team1Id: null,
           team2Id: null,
           round: r,
           bracketType: 'losers',
-          nextMatchId: `l${r + 1}-${Math.floor(i / 2)}`
+          nextMatchId
         });
       }
     }
 
-    // Connect WB losers to LB
-    // WB Round 1 losers go to LB Round 1
+    // 3. Connect WB losers to LB
+    // WB R1 losers -> LB R1
     winners.filter(m => m.round === 1).forEach((m, i) => {
-      m.loserMatchId = `l1-${Math.floor(i / 1)}`; // Simplified mapping
+      m.loserMatchId = `l1-${Math.floor(i / 2)}`;
     });
-    // WB Round 2 losers go to LB Round 2 or 3...
-    // This mapping is tricky without a full bracket engine, but we'll set the IDs
-    for (let r = 2; r < numRounds; r++) {
+    // WB Rr losers -> LB R(2r-2) for r > 1
+    for (let r = 2; r <= k; r++) {
       winners.filter(m => m.round === r).forEach((m, i) => {
-        m.loserMatchId = `l${(r-1)*2}-${i}`; 
+        const lbRound = (r - 1) * 2;
+        if (lbRound <= numLBRounds) {
+          m.loserMatchId = `l${lbRound}-${i}`;
+        }
       });
     }
 
-    // 3. Grand Finals
-    const wbFinal = winners.find(m => m.round === numRounds);
-    const lbFinal = losers[losers.length - 1];
+    // 4. Grand Finals
+    const wbFinal = winners.find(m => m.round === k);
+    const lbFinal = losers.find(m => m.round === numLBRounds);
     
+    if (wbFinal) wbFinal.nextMatchId = 'gf-1';
+    if (lbFinal) lbFinal.nextMatchId = 'gf-1';
+
     const grandFinal: Match = {
       id: 'gf-1',
       team1Id: null, // From WB
       team2Id: null, // From LB
-      round: numRounds + 1,
+      round: k + 1,
       bracketType: 'winners',
-      nextMatchId: 'gf-2' // If necessary
+      nextMatchId: 'gf-2'
     };
 
     const grandFinalIfNecessary: Match = {
       id: 'gf-2',
       team1Id: null,
       team2Id: null,
-      round: numRounds + 2,
+      round: k + 2,
       bracketType: 'winners',
       nextMatchId: null
     };
 
-    if (wbFinal) wbFinal.nextMatchId = 'gf-1';
-    if (lbFinal) lbFinal.nextMatchId = 'gf-1';
-
     return [...winners, ...losers, grandFinal, grandFinalIfNecessary];
+  };
+
+  const autoAdvanceByes = (matches: Match[]): Match[] => {
+    let updated = [...matches];
+    let changed = true;
+    
+    while (changed) {
+      changed = false;
+      for (let i = 0; i < updated.length; i++) {
+        const m = updated[i];
+        if (m.winnerId) continue;
+        
+        // If one team is null (bye), the other advances
+        const team1Id = m.team1Id;
+        const team2Id = m.team2Id;
+
+        if (team1Id && !team2Id && m.id.includes('1-')) { // Only auto-advance in Round 1 initially
+          // Wait, actually any round if one side is null and it's a bye
+          // But we need to be careful about TBD matches.
+          // In Round 1, null means Bye. In subsequent rounds, null means TBD.
+        }
+      }
+      // Actually, a simpler way: if it's Round 1 and one team is null, it's a bye.
+      for (let i = 0; i < updated.length; i++) {
+        const m = updated[i];
+        if (m.winnerId || m.round !== 1) continue;
+        if (m.team1Id && !m.team2Id) {
+          updated[i] = { ...m, winnerId: m.team1Id, score1: 1, score2: 0 };
+          changed = true;
+          propagateWinner(updated, updated[i]);
+        } else if (!m.team1Id && m.team2Id) {
+          updated[i] = { ...m, winnerId: m.team2Id, score1: 0, score2: 1 };
+          changed = true;
+          propagateWinner(updated, updated[i]);
+        } else if (!m.team1Id && !m.team2Id) {
+          // Double bye? Rare but possible
+          updated[i] = { ...m, winnerId: 'bye', score1: 0, score2: 0 };
+          changed = true;
+          propagateWinner(updated, updated[i]);
+        }
+      }
+    }
+    return updated;
+  };
+
+  const propagateWinner = (matches: Match[], currentMatch: Match) => {
+    const winnerId = currentMatch.winnerId;
+    if (!winnerId || !currentMatch.nextMatchId) return;
+
+    const nextMatchIdx = matches.findIndex(m => m.id === currentMatch.nextMatchId);
+    if (nextMatchIdx === -1) return;
+
+    const nextMatch = { ...matches[nextMatchIdx] };
+    const matchIdx = parseInt(currentMatch.id.split('-')[1]);
+
+    if (currentMatch.id.startsWith('w')) {
+      const isTeam1 = matchIdx % 2 === 0;
+      if (isTeam1) nextMatch.team1Id = winnerId;
+      else nextMatch.team2Id = winnerId;
+    } else if (currentMatch.id.startsWith('l')) {
+      const round = currentMatch.round;
+      if (round % 2 === 1) {
+        nextMatch.team1Id = winnerId;
+      } else {
+        if (matchIdx % 2 === 0) nextMatch.team1Id = winnerId;
+        else nextMatch.team2Id = winnerId;
+      }
+    }
+    matches[nextMatchIdx] = nextMatch;
+  };
+
+  const assignNets = (matches: Match[], numNets: number): Match[] => {
+    const updated = [...matches];
+    const activeNets = new Set(updated.filter(m => m.netIndex !== undefined && !m.winnerId).map(m => m.netIndex));
+    
+    for (let i = 0; i < updated.length; i++) {
+      const m = updated[i];
+      if (m.team1Id && m.team2Id && !m.winnerId && m.netIndex === undefined) {
+        // Find first free net
+        for (let n = 0; n < numNets; n++) {
+          if (!activeNets.has(n)) {
+            updated[i] = { ...m, netIndex: n };
+            activeNets.add(n);
+            break;
+          }
+        }
+      }
+    }
+    return updated;
   };
 
   const generatePoolPlay = (teams: Team[]): Match[] => {
@@ -484,13 +714,89 @@ export default function App() {
     return matches;
   };
 
-  const onJoinQueue = async (teamId: string) => {
-    const newQueue = [...queue, teamId];
-    if (tournamentId) {
-      await updateDoc(doc(db, 'tournaments', tournamentId), { queue: newQueue });
-    } else {
-      setQueue(newQueue);
-    }
+  const onJoinQueue = async (teamId: string, currentTeams?: Team[]) => {
+    console.log('Joining queue:', teamId);
+    setQueue(prevQueue => {
+      let newQueue = [...prevQueue, teamId];
+      const newActiveNets = { ...activeNets };
+      let updatedTeams = [...(currentTeams || teams)];
+      let matchesToAdd: Match[] = [];
+
+      if (format === 'winners-list') {
+        // Check for empty nets or waiting matches
+        for (let i = 0; i < numNets; i++) {
+          const currentMatchId = newActiveNets[i];
+          const currentMatch = matches.find(m => m.id === currentMatchId);
+
+          // If net is empty OR match is finished, start a new one if we have 2 teams
+          if ((!currentMatchId || currentMatch?.winnerId) && newQueue.length >= 2) {
+            const t1Id = newQueue.shift()!;
+            const t2Id = newQueue.shift()!;
+            const matchId = `net-${i}-${Date.now()}`;
+            const newMatch: Match = {
+              id: matchId,
+              team1Id: t1Id,
+              team2Id: t2Id,
+              round: 1,
+              netIndex: i
+            };
+            newActiveNets[i] = matchId;
+            matchesToAdd.push(newMatch);
+            
+            updatedTeams = updatedTeams.map(t => {
+              if (t.id === t1Id || t.id === t2Id) return { ...t, consecutiveWins: 0 };
+              return t;
+            });
+          } else if (currentMatch && !currentMatch.winnerId && !currentMatch.team2Id && newQueue.length >= 1) {
+            // Fill waiting match (only if not finished)
+            const t2Id = newQueue.shift()!;
+            const updatedMatch = { ...currentMatch, team2Id: t2Id };
+            matchesToAdd.push(updatedMatch);
+            
+            updatedTeams = updatedTeams.map(t => {
+              if (t.id === t2Id) return { ...t, consecutiveWins: 0 };
+              return t;
+            });
+          }
+        }
+      }
+
+      if (tournamentId) {
+        const updates: any = { queue: newQueue };
+        if (format === 'winners-list') {
+          for (const [net, matchId] of Object.entries(newActiveNets)) {
+            updates[`activeNets.${net}`] = matchId;
+          }
+        }
+        updateDoc(doc(db, 'tournaments', tournamentId), updates);
+        for (const match of matchesToAdd) {
+          setDoc(doc(db, 'tournaments', tournamentId, 'matches', match.id), match);
+        }
+        for (const team of updatedTeams) {
+          if (matchesToAdd.some(m => m.team1Id === team.id || m.team2Id === team.id)) {
+            updateDoc(doc(db, 'tournaments', tournamentId, 'teams', team.id), { consecutiveWins: 0 });
+          }
+        }
+      } else {
+        if (format === 'winners-list') {
+          setActiveNets(newActiveNets);
+          setMatches(prev => {
+            const updated = [...prev];
+            for (const m of matchesToAdd) {
+              const idx = updated.findIndex(existing => existing.id === m.id);
+              if (idx !== -1) {
+                updated[idx] = m;
+              } else {
+                updated.push(m);
+              }
+            }
+            return updated;
+          });
+          setTeams(updatedTeams);
+        }
+      }
+      return newQueue;
+    });
   };
 
   const onLeaveQueue = async (teamId: string) => {
@@ -503,6 +809,8 @@ export default function App() {
   };
 
   const updateScore = async (matchId: string, s1: number, s2: number) => {
+    if (rules.winByTwo && Math.abs(s1 - s2) < 2) return;
+    
     const updatedMatches = [...matches];
     const matchIdx = updatedMatches.findIndex(m => m.id === matchId);
     if (matchIdx === -1) return;
@@ -516,9 +824,8 @@ export default function App() {
     if (format === 'winners-list' && winnerId && loserId) {
       const netIndex = currentMatch.netIndex!;
       const winnerTeam = teams.find(t => t.id === winnerId);
-      const loserTeam = teams.find(t => t.id === loserId);
       
-      const newQueue = [...queue, loserId];
+      const newQueue = [...queue]; // Loser is removed, doesn't auto-rejoin
       let nextTeam1Id = winnerId;
       let nextTeam2Id = null;
 
@@ -528,26 +835,31 @@ export default function App() {
       const reachedMax = updatedWinnerWins >= maxWins;
 
       if (!rules.winnerStays || (reachedMax && rules.onMaxWins === 'both-off')) {
-        newQueue.push(winnerId);
+        // Both off or winner doesn't stay - neither auto-rejoin
         if (newQueue.length >= 2) {
           nextTeam1Id = newQueue.shift()!;
           nextTeam2Id = newQueue.shift()!;
+        } else {
+          nextTeam1Id = null;
+          nextTeam2Id = null;
         }
       } else if (reachedMax && rules.onMaxWins === 'other-stays') {
-        newQueue.push(winnerId);
-        // Loser stays, so remove them from the end of the queue where they were just added
-        newQueue.pop(); 
+        // Winner off, loser stays - winner doesn't auto-rejoin
         if (newQueue.length > 0) {
           nextTeam1Id = loserId; // Other team stays
           nextTeam2Id = newQueue.shift()!;
+        } else {
+          nextTeam1Id = loserId;
+          nextTeam2Id = null;
         }
       } else {
+        // Winner stays, loser off - loser doesn't auto-rejoin
         if (newQueue.length > 0) {
           nextTeam2Id = newQueue.shift()!;
         }
       }
 
-      if (nextTeam1Id && nextTeam2Id) {
+      if (nextTeam1Id) {
         const nextMatchId = `net-${netIndex}-${Date.now()}`;
         const nextMatch: Match = {
           id: nextMatchId,
@@ -563,7 +875,9 @@ export default function App() {
           // Reset wins if team is new or both off
           const t1Wins = nextTeam1Id === winnerId && !reachedMax ? updatedWinnerWins : 0;
           await updateDoc(doc(db, 'tournaments', tournamentId, 'teams', nextTeam1Id), { consecutiveWins: t1Wins });
-          await updateDoc(doc(db, 'tournaments', tournamentId, 'teams', nextTeam2Id), { consecutiveWins: 0 });
+          if (nextTeam2Id) {
+            await updateDoc(doc(db, 'tournaments', tournamentId, 'teams', nextTeam2Id), { consecutiveWins: 0 });
+          }
           await updateDoc(doc(db, 'tournaments', tournamentId, 'teams', loserId), { consecutiveWins: 0 });
 
           await updateDoc(doc(db, 'tournaments', tournamentId), { 
@@ -576,7 +890,7 @@ export default function App() {
           setActiveNets({ ...activeNets, [netIndex]: nextMatchId });
           setTeams(teams.map(t => {
             if (t.id === nextTeam1Id) return { ...t, consecutiveWins: nextTeam1Id === winnerId && !reachedMax ? updatedWinnerWins : 0 };
-            if (t.id === nextTeam2Id) return { ...t, consecutiveWins: 0 };
+            if (nextTeam2Id && t.id === nextTeam2Id) return { ...t, consecutiveWins: 0 };
             if (t.id === loserId) return { ...t, consecutiveWins: 0 };
             return t;
           }));
@@ -618,21 +932,26 @@ export default function App() {
           else nextMatch.team2Id = winnerId;
         } else if (currentMatch.id.startsWith('l')) {
           // Losers bracket propagation
-          // Round 1, 3, 5... are entry rounds (team1 is from previous LB, team2 is from WB)
-          // Round 2, 4, 6... are consolidation rounds
           const round = currentMatch.round;
+          const matchIdx = parseInt(matchId.split('-')[1]);
           if (round % 2 === 1) {
+            // Consolidation -> Entry: Winner always goes to Team 1
             nextMatch.team1Id = winnerId;
           } else {
-            nextMatch.team2Id = winnerId;
+            // Entry -> Consolidation: Winner goes to Team 1 or 2
+            if (matchIdx % 2 === 0) nextMatch.team1Id = winnerId;
+            else nextMatch.team2Id = winnerId;
           }
         } else if (currentMatch.id === 'gf-1') {
           // Grand Final 1
-          nextMatch.team1Id = currentMatch.team1Id;
-          nextMatch.team2Id = currentMatch.team2Id;
-          // If LB winner wins GF1, they play GF2
+          // If LB winner (team2) wins, they play a second match (GF2)
           if (winnerId === currentMatch.team2Id) {
-            // GF2 is already in the bracket, we just need to make sure it's ready
+            nextMatch.team1Id = currentMatch.team1Id;
+            nextMatch.team2Id = currentMatch.team2Id;
+          } else {
+            // WB winner won, tournament over
+            setIsFinished(true);
+            if (tournamentId) updateDoc(doc(db, 'tournaments', tournamentId), { isFinished: true });
           }
         }
 
@@ -645,36 +964,64 @@ export default function App() {
       const loserMatchIdx = updatedMatches.findIndex(m => m.id === currentMatch.loserMatchId);
       if (loserMatchIdx !== -1) {
         const loserMatch = { ...updatedMatches[loserMatchIdx] };
-        // Losers from WB always go to team2 slot in LB entry rounds
-        loserMatch.team2Id = loserId;
+        if (currentMatch.round === 1) {
+          const matchIdx = parseInt(matchId.split('-')[1]);
+          if (matchIdx % 2 === 0) loserMatch.team1Id = loserId;
+          else loserMatch.team2Id = loserId;
+        } else {
+          // Losers from WB always go to team2 slot in LB entry rounds
+          loserMatch.team2Id = loserId;
+        }
         updatedMatches[loserMatchIdx] = loserMatch;
       }
     }
 
+    const matchesWithNets = assignNets(updatedMatches, numNets);
+
     if (tournamentId) {
-      await updateDoc(doc(db, 'tournaments', tournamentId, 'matches', matchId), currentMatch);
-      if (currentMatch.nextMatchId) {
-        const nextMatch = updatedMatches.find(m => m.id === currentMatch.nextMatchId);
-        if (nextMatch) await updateDoc(doc(db, 'tournaments', tournamentId, 'matches', nextMatch.id), nextMatch);
-      }
-      if (currentMatch.loserMatchId) {
-        const loserMatch = updatedMatches.find(m => m.id === currentMatch.loserMatchId);
-        if (loserMatch) await updateDoc(doc(db, 'tournaments', tournamentId, 'matches', loserMatch.id), loserMatch);
+      await setDoc(doc(db, 'tournaments', tournamentId, 'matches', matchId), currentMatch);
+      
+      // Update any other matches that were modified (propagation or net assignment)
+      for (const m of matchesWithNets) {
+        const originalMatch = matches.find(om => om.id === m.id);
+        
+        // Check if match was updated in updatedMatches or if netIndex was assigned
+        if (JSON.stringify(m) !== JSON.stringify(originalMatch)) {
+          if (m.id !== matchId) {
+            await setDoc(doc(db, 'tournaments', tournamentId, 'matches', m.id), m);
+          }
+        }
       }
     } else {
-      setMatches(updatedMatches);
+      setMatches(matchesWithNets);
+    }
+  };
+
+  const finishTournament = async () => {
+    if (window.confirm("Finish the tournament? This will finalize the results.")) {
+      if (tournamentId) {
+        await updateDoc(doc(db, 'tournaments', tournamentId), { isFinished: true });
+      } else {
+        setIsFinished(true);
+      }
     }
   };
 
   const resetTournament = async () => {
     if (window.confirm("Are you sure you want to reset the tournament? All scores will be lost.")) {
       if (tournamentId) {
-        await updateDoc(doc(db, 'tournaments', tournamentId), { isStarted: false });
-        // Optionally delete matches, but for now just setting isStarted to false is enough to show setup UI
-      } else {
-        setIsStarted(false);
-        setMatches([]);
+        // Clear matches in Firestore
+        const matchesRef = collection(db, 'tournaments', tournamentId, 'matches');
+        const snapshot = await getDocs(matchesRef);
+        const deletePromises = snapshot.docs.map(doc => deleteDoc(doc.ref));
+        await Promise.all(deletePromises);
+        
+        await updateDoc(doc(db, 'tournaments', tournamentId), { isStarted: false, isFinished: false });
       }
+      
+      setIsStarted(false);
+      setIsFinished(false);
+      setMatches([]);
     }
   };
 
@@ -690,23 +1037,23 @@ export default function App() {
             <h1 className="text-xl font-bold tracking-tight hidden sm:block">Brackets</h1>
           </div>
           
-          <div className="flex items-center gap-2 sm:gap-4">
+          <div className="flex items-center gap-1.5 sm:gap-4">
             {user ? (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 sm:gap-2">
                 {!tournamentId && !isStarted && (
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5 sm:gap-2">
                     <input
                       type="text"
-                      placeholder="Invite Code"
+                      placeholder="Code"
                       value={joinCode}
                       onChange={(e) => setJoinCode(e.target.value)}
-                      className="w-24 sm:w-32 px-3 py-1.5 text-sm border border-zinc-200 rounded-lg focus:ring-2 focus:ring-grey-blue outline-none uppercase"
+                      className="w-16 sm:w-32 px-2 sm:px-3 py-1.5 text-xs sm:text-sm border border-zinc-200 rounded-lg focus:ring-2 focus:ring-grey-blue outline-none uppercase"
                     />
                     <button
                       onClick={joinTournament}
-                      className="bg-zinc-100 text-zinc-700 px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-zinc-200 transition-colors flex items-center gap-2"
+                      className="bg-zinc-100 text-zinc-700 px-2 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm font-bold hover:bg-zinc-200 transition-colors flex items-center gap-1 sm:gap-2"
                     >
-                      <LogIn className="w-4 h-4" />
+                      <LogIn className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                       Join
                     </button>
                   </div>
@@ -719,8 +1066,17 @@ export default function App() {
                   </div>
                 )}
 
-                {isStarted && isCreator && (
+                {isStarted && (isCreator || !tournamentId) && (
                   <div className="flex items-center gap-2">
+                    {!isFinished && (
+                      <button
+                        onClick={finishTournament}
+                        className="text-sm font-medium text-grey-blue hover:text-grey-blue/80 transition-colors flex items-center gap-2"
+                      >
+                        <CheckCircle className="w-4 h-4" />
+                        <span className="hidden sm:inline">Finish Tournament</span>
+                      </button>
+                    )}
                     <button
                       onClick={abortTournament}
                       className="text-sm font-medium text-zinc-500 hover:text-red-600 transition-colors flex items-center gap-2"
@@ -858,6 +1214,25 @@ export default function App() {
 
                   <div className="sm:col-span-2 pt-4 border-t border-zinc-100 flex flex-col sm:flex-row gap-6">
                     <button
+                      onClick={() => updateRules({ winByTwo: !rules.winByTwo })}
+                      className="flex items-center gap-3 group"
+                    >
+                      <div className={cn(
+                        "w-12 h-6 rounded-full transition-all relative",
+                        rules.winByTwo ? "bg-grey-blue" : "bg-zinc-200"
+                      )}>
+                        <div className={cn(
+                          "absolute top-1 w-4 h-4 bg-white rounded-full transition-all",
+                          rules.winByTwo ? "left-7" : "left-1"
+                        )} />
+                      </div>
+                      <div className="text-left">
+                        <div className="text-sm font-bold text-zinc-700">Win by Two</div>
+                        <div className="text-xs text-zinc-500">Must win by at least 2 points.</div>
+                      </div>
+                    </button>
+
+                    <button
                       onClick={() => updateRules({ serveToWin: !rules.serveToWin })}
                       className="flex items-center gap-3 group"
                     >
@@ -948,31 +1323,30 @@ export default function App() {
                         )}
                       </>
                     )}
+                    <div className="sm:col-span-2 pt-4 border-t border-zinc-100 space-y-4">
+                      <label className="block text-sm font-bold text-zinc-700">Number of Nets</label>
+                      <div className="flex items-center gap-6">
+                        <input
+                          type="range"
+                          min="1"
+                          max="12"
+                          value={numNets}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value);
+                            setNumNets(val);
+                            if (tournamentId) updateDoc(doc(db, 'tournaments', tournamentId), { numNets: val });
+                          }}
+                          className="flex-1 accent-grey-blue h-2 bg-zinc-100 rounded-lg appearance-none cursor-pointer"
+                        />
+                        <div className="w-12 h-12 rounded-xl bg-grey-blue/5 border border-grey-blue/20 flex items-center justify-center text-lg font-bold text-grey-blue">
+                          {numNets}
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
                   {format === 'winners-list' && (
                     <div className="sm:col-span-2 pt-4 border-t border-zinc-100 space-y-6">
-                      <div className="space-y-4">
-                        <label className="block text-sm font-bold text-zinc-700">Number of Nets</label>
-                        <div className="flex items-center gap-6">
-                          <input
-                            type="range"
-                            min="1"
-                            max="12"
-                            value={numNets}
-                            onChange={(e) => {
-                              const val = parseInt(e.target.value);
-                              setNumNets(val);
-                              if (tournamentId) updateDoc(doc(db, 'tournaments', tournamentId), { numNets: val });
-                            }}
-                            className="flex-1 accent-grey-blue h-2 bg-zinc-100 rounded-lg appearance-none cursor-pointer"
-                          />
-                          <div className="w-12 h-12 rounded-xl bg-grey-blue/5 border border-grey-blue/20 flex items-center justify-center text-lg font-bold text-grey-blue">
-                            {numNets}
-                          </div>
-                        </div>
-                      </div>
-
                       <div className="space-y-4">
                         <label className="block text-sm font-bold text-zinc-700">Pre-sign up Teams</label>
                         <div className="flex items-center gap-6">
@@ -1022,7 +1396,7 @@ export default function App() {
                       </button>
                     )}
                     <button
-                      onClick={addTeam}
+                      onClick={() => addTeam()}
                       className="bg-grey-blue text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-grey-blue/90 transition-colors flex items-center gap-2"
                     >
                       <Plus className="w-4 h-4" />
@@ -1140,14 +1514,7 @@ export default function App() {
                     Resume {activeTab === 'tournaments' ? 'Tournament' : 'Open Play'}
                   </button>
                   <button
-                    onClick={() => {
-                      if (window.confirm("Start over? This will clear all current scores and matches.")) {
-                        setMatches([]);
-                        setQueue([]);
-                        setActiveNets({});
-                        startTournament();
-                      }
-                    }}
+                    onClick={restartTournament}
                     disabled={tournamentId && !isCreator}
                     className="w-full bg-white text-zinc-500 py-3 rounded-xl font-bold text-sm border border-zinc-200 hover:bg-zinc-50 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
@@ -1186,6 +1553,7 @@ export default function App() {
                       {rules.pointsToWin === 0 ? 'Traditional' : `To ${rules.pointsToWin}`}
                       {rules.bestOf === 3 && ' • Best of 3'}
                       {rules.serveToWin && ' • Serve to Win'}
+                      {rules.winByTwo && ' • Win by 2'}
                     </span>
                   </div>
                   {tournamentId && (
@@ -1211,13 +1579,6 @@ export default function App() {
                   <Settings className="w-4 h-4" />
                   Setup
                 </button>
-                <button
-                  onClick={exportAsImage}
-                  className="bg-white text-zinc-700 border border-zinc-200 px-4 py-2 rounded-lg text-sm font-bold hover:bg-zinc-50 transition-colors flex items-center gap-2"
-                >
-                  <Share2 className="w-4 h-4" />
-                  Export Image
-                </button>
                 {isCreator && !isFinished && (
                   <button
                     onClick={endTournament}
@@ -1229,12 +1590,7 @@ export default function App() {
                 )}
                 {isFinished && isCreator && (
                   <button
-                    onClick={() => {
-                      if (window.confirm("Start a new tournament? This will clear current results.")) {
-                        setIsStarted(false);
-                        setIsFinished(false);
-                      }
-                    }}
+                    onClick={resetToSetup}
                     className="bg-grey-blue text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-grey-blue/90 transition-colors flex items-center gap-2"
                   >
                     <Plus className="w-4 h-4" />
@@ -1253,14 +1609,15 @@ export default function App() {
                 onUpdateScore={updateScore}
                 onJoinQueue={onJoinQueue}
                 onLeaveQueue={onLeaveQueue}
+                onAddTeam={addTeam}
                 isCreator={isCreator}
                 isFinished={isFinished}
                 rules={rules}
               />
             ) : (format === 'pool' || format === 'play-twice') ? (
-              <PoolPlayView matches={matches} teams={teams} onUpdateScore={updateScore} isFinished={isFinished} />
+              <PoolPlayView matches={matches} teams={teams} onUpdateScore={updateScore} isFinished={isFinished} rules={rules} />
             ) : (
-              <BracketView matches={matches} teams={teams} onUpdateScore={updateScore} isFinished={isFinished} />
+              <BracketView matches={matches} teams={teams} onUpdateScore={updateScore} isFinished={isFinished} rules={rules} />
             )}
           </div>
         )}
