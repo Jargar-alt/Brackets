@@ -1,19 +1,34 @@
 import type { Match, Team } from '../../types';
 
-/** Match counts per round: round 1 has ceil(N/2) games; each later round halves until one winner. */
-function eliminationRoundMatchCounts(numTeams: number): number[] {
-  const perRound: number[] = [];
-  let t = numTeams;
-  while (t > 1) {
-    perRound.push(Math.ceil(t / 2));
-    t = Math.ceil(t / 2);
-  }
-  return perRound;
+/** Smallest power of 2 ≥ n (n ≥ 1 → ≥ 1). */
+export function nextPowerOf2AtLeast(n: number): number {
+  if (n <= 0) return 0;
+  if (n === 1) return 1;
+  return 2 ** Math.ceil(Math.log2(n));
 }
 
 /**
- * Single elimination: sequential pairing in round 1. If N is odd, exactly one match is a single-team bye
- * (team2 null). No power-of-2 padding with multiple empty slots.
+ * 1-based seed indices in leaf order for a full P-team bracket (P a power of 2, P ≥ 2).
+ * Pair consecutive entries for round 1: (order[0],order[1]), …
+ * Matches standard separation (e.g. P=8 → 1v8, 4v5, 2v7, 3v6 in those pair groups).
+ */
+export function bracketLeafSeedOrder(p: number): number[] {
+  if (p <= 1) return [1];
+  if (p === 2) return [1, 2];
+  const half = p / 2;
+  const prev = bracketLeafSeedOrder(half);
+  const out: number[] = [];
+  for (let i = 0; i < half; i++) {
+    out.push(prev[i]!);
+    out.push(p + 1 - prev[i]!);
+  }
+  return out;
+}
+
+/**
+ * Single / double elimination winners bracket: pad to P = next power of 2 ≥ N.
+ * Round 1 has P/2 matches. Seeds 1..N map to `teams[0]`..`teams[N-1]` (list order = seed order).
+ * Seeds N+1..P are absent → their slots are empty (bye for the opponent). No extra special cases.
  */
 export function generateSingleElimination(
   teams: Team[],
@@ -21,12 +36,14 @@ export function generateSingleElimination(
   bracketType: 'winners' | 'losers' = 'winners'
 ): Match[] {
   const numTeams = teams.length;
-  const perRound = eliminationRoundMatchCounts(numTeams);
-  const R = perRound.length;
+  if (numTeams < 2) return [];
+
+  const P = nextPowerOf2AtLeast(numTeams);
+  const R = Math.round(Math.log2(P));
   const matches: Match[] = [];
 
   for (let r = 1; r <= R; r++) {
-    const count = perRound[r - 1]!;
+    const count = P / 2 ** r;
     for (let i = 0; i < count; i++) {
       matches.push({
         id: `${prefix}${r}-${i}`,
@@ -39,15 +56,18 @@ export function generateSingleElimination(
     }
   }
 
-  const r1 = matches.filter(m => m.round === 1);
-  let ti = 0;
+  const order = bracketLeafSeedOrder(P);
+  const r1 = matches.filter(m => m.round === 1).sort((a, b) => a.id.localeCompare(b.id));
+
   for (let i = 0; i < r1.length; i++) {
-    const t1 = ti < numTeams ? teams[ti++]!.id : null;
-    const t2 = ti < numTeams ? teams[ti++]!.id : null;
+    const sa = order[2 * i]!;
+    const sb = order[2 * i + 1]!;
+    const team1Id = sa <= numTeams ? teams[sa - 1]!.id : null;
+    const team2Id = sb <= numTeams ? teams[sb - 1]!.id : null;
     const m = r1[i]!;
     const idx = matches.findIndex(x => x.id === m.id);
     if (idx !== -1) {
-      matches[idx] = { ...m, team1Id: t1, team2Id: t2 };
+      matches[idx] = { ...m, team1Id, team2Id };
     }
   }
 

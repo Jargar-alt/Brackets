@@ -6,7 +6,7 @@ import type { Match, Team, TournamentFormat, TournamentRules } from '../types';
 import { cn } from '../lib/utils';
 import { Radio, LayoutGrid, Trophy, Users, Clock, Home } from 'lucide-react';
 import { BracketReferenceStrip } from '../components/EliminationCourtView';
-import { matchIsOnNet, matchIsWaitingForCourt } from '../lib/matchSchedule';
+import { matchIsOnNet, matchIsWaitingForCourt, isWinnersR1ByeSlot } from '../lib/matchSchedule';
 import { resolveDisplayChampion } from '../lib/tournament/champion';
 
 const FORMAT_LABEL: Record<TournamentFormat, string> = {
@@ -87,6 +87,13 @@ export function LiveResultsView() {
 
   const teamName = (id: string | null | undefined) =>
     id ? teams.find(t => t.id === id)?.name ?? id.slice(0, 6) : '—';
+
+  const elimOpponentLabel = (m: Match, side: 1 | 2) => {
+    const id = side === 1 ? m.team1Id : m.team2Id;
+    if (id) return teamName(id);
+    if (side === 2 && isWinnersR1ByeSlot(m)) return 'Bye';
+    return '—';
+  };
 
   const winnersQueuePairs = useMemo(() => {
     if (format !== 'winners-list') return [];
@@ -289,9 +296,9 @@ export function LiveResultsView() {
                 >
                   <span className="text-[10px] font-extrabold text-[#000080]">#{i + 1}</span>
                   <span className="min-w-0 flex-1 text-center">
-                    {teamName(m.team1Id)}
+                    {elimOpponentLabel(m, 1)}
                     <span className="mx-2 text-zinc-400">vs</span>
-                    {teamName(m.team2Id)}
+                    {elimOpponentLabel(m, 2)}
                   </span>
                   <span className="text-[10px] text-zinc-500">
                     {m.poolGroup ? `Group ${m.poolGroup}` : ''}
@@ -319,10 +326,10 @@ export function LiveResultsView() {
                   {m ? (
                     <div className="space-y-1 text-sm font-bold">
                       <div className={cn(m.winnerId === m.team1Id && 'text-emerald-800')}>
-                        {teamName(m.team1Id)}
+                        {elimOpponentLabel(m, 1)}
                       </div>
                       <div className={cn(m.winnerId === m.team2Id && 'text-emerald-800')}>
-                        {teamName(m.team2Id)}
+                        {elimOpponentLabel(m, 2)}
                       </div>
                       {m.sets && m.sets.length > 0 && (
                         <div className="pt-1 font-mono text-xs text-zinc-600">
@@ -397,11 +404,11 @@ export function LiveResultsView() {
               <div key={m.id} className="border border-zinc-300 bg-white px-3 py-2 text-xs">
                 <div className="font-bold">
                   <span className={m.winnerId === m.team1Id ? 'text-emerald-800' : ''}>
-                    {teamName(m.team1Id)}
+                    {elimOpponentLabel(m, 1)}
                   </span>
                   <span className="mx-1 text-zinc-400">vs</span>
                   <span className={m.winnerId === m.team2Id ? 'text-emerald-800' : ''}>
-                    {teamName(m.team2Id)}
+                    {elimOpponentLabel(m, 2)}
                   </span>
                 </div>
                 {m.sets && m.sets.length > 0 && (

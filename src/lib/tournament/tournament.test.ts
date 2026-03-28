@@ -8,7 +8,9 @@ import {
   generateCasualFirstRound,
   buildNextCasualRound,
   casualMaxRound,
-  casualRoundIsComplete
+  casualRoundIsComplete,
+  nextPowerOf2AtLeast,
+  bracketLeafSeedOrder
 } from './generate';
 import { assignNets, assignRoundRobinNets } from './nets';
 import {
@@ -179,20 +181,50 @@ describe('generateDoubleElimination', () => {
   });
 });
 
-describe('generateSingleElimination', () => {
-  it('uses at most one first-round single-team bye when N is odd', () => {
-    const r1 = generateSingleElimination(teams4(5)).filter(x => x.round === 1);
-    const singleBye = r1.filter(
-      x => (x.team1Id && !x.team2Id) || (!x.team1Id && x.team2Id)
-    );
-    const doubleEmpty = r1.filter(x => !x.team1Id && !x.team2Id);
-    expect(singleBye.length).toBe(1);
-    expect(doubleEmpty.length).toBe(0);
+describe('nextPowerOf2AtLeast / bracketLeafSeedOrder', () => {
+  it('pads N to the next power of 2', () => {
+    expect(nextPowerOf2AtLeast(1)).toBe(1);
+    expect(nextPowerOf2AtLeast(5)).toBe(8);
+    expect(nextPowerOf2AtLeast(8)).toBe(8);
+    expect(nextPowerOf2AtLeast(9)).toBe(16);
   });
 
-  it('fills round 1 with all paired teams when N is even', () => {
-    const r1 = generateSingleElimination(teams4(6)).filter(x => x.round === 1);
+  it('orders 8 seeds for classic first-round pair groups', () => {
+    expect(bracketLeafSeedOrder(8)).toEqual([1, 8, 4, 5, 2, 7, 3, 6]);
+  });
+});
+
+describe('generateSingleElimination', () => {
+  it('uses P − N round-1 byes into a power-of-2 bracket (ghost seeds)', () => {
+    const n = 5;
+    const P = nextPowerOf2AtLeast(n);
+    const r1 = generateSingleElimination(teams4(n)).filter(x => x.round === 1);
+    expect(r1.length).toBe(P / 2);
+    const singleSlot = r1.filter(
+      x => (x.team1Id && !x.team2Id) || (!x.team1Id && x.team2Id)
+    );
+    expect(singleSlot.length).toBe(P - n);
+    expect(r1.every(x => x.team1Id || x.team2Id)).toBe(true);
+  });
+
+  it('places seeds 4 vs 5 in one real game for N = 5 (teams t3 vs t4)', () => {
+    const r1 = generateSingleElimination(teams4(5))
+      .filter(x => x.round === 1)
+      .sort((a, b) => a.id.localeCompare(b.id));
+    const playIn = r1.find(x => x.team1Id && x.team2Id);
+    expect(playIn?.team1Id).toBe('t3');
+    expect(playIn?.team2Id).toBe('t4');
+  });
+
+  it('has every round-1 slot filled when N is a power of 2', () => {
+    const r1 = generateSingleElimination(teams4(8)).filter(x => x.round === 1);
+    expect(r1.length).toBe(4);
     expect(r1.every(x => x.team1Id && x.team2Id)).toBe(true);
+  });
+
+  it('returns no matches for 0 or 1 teams', () => {
+    expect(generateSingleElimination([])).toEqual([]);
+    expect(generateSingleElimination(teams4(1))).toEqual([]);
   });
 });
 

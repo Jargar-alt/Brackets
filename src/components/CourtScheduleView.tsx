@@ -3,7 +3,7 @@ import { Match, Team, TournamentRules, SetScore } from '../types';
 import { cn } from '../lib/utils';
 import { Trophy, Layout, Clock, Users } from 'lucide-react';
 import { MatchCard } from './MatchCard';
-import { matchIsOnNet, matchIsWaitingForCourt } from '../lib/matchSchedule';
+import { matchIsOnNet, matchIsWaitingForCourt, isWinnersR1ByeSlot } from '../lib/matchSchedule';
 
 export interface CourtScheduleViewProps {
   matches: Match[];
@@ -113,9 +113,11 @@ export const CourtScheduleView: React.FC<CourtScheduleViewProps> = ({
                   <div className="text-[9px] font-bold text-zinc-500">Round {match.round}</div>
                 )}
                 <div className="flex items-center justify-between gap-2 text-sm font-bold text-black">
-                  <span className="min-w-0 truncate">{getTeam(match.team1Id)?.name}</span>
+                  <span className="min-w-0 truncate">{getTeam(match.team1Id)?.name ?? '—'}</span>
                   <span className="shrink-0 text-[10px] text-black/50">vs</span>
-                  <span className="min-w-0 truncate text-right">{getTeam(match.team2Id)?.name}</span>
+                  <span className="min-w-0 truncate text-right">
+                    {getTeam(match.team2Id)?.name ?? (isWinnersR1ByeSlot(match) ? 'Bye' : '—')}
+                  </span>
                 </div>
               </div>
             ))}

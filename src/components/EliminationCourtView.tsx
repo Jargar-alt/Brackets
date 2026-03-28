@@ -3,6 +3,7 @@ import { Match, SetScore, Team, TournamentRules } from '../types';
 import { cn } from '../lib/utils';
 import { GitMerge, Info } from 'lucide-react';
 import { CourtScheduleView } from './CourtScheduleView';
+import { isWinnersR1ByeSlot } from '../lib/matchSchedule';
 
 interface EliminationCourtViewProps {
   matches: Match[];
@@ -81,7 +82,7 @@ export function BracketReferenceStrip({
                         !m.team2Id && !t2w && 'italic text-zinc-400'
                       )}
                     >
-                      {name(m.team2Id)}
+                      {m.team2Id ? name(m.team2Id) : isWinnersR1ByeSlot(m) ? 'Bye' : '—'}
                     </div>
                     {w && (
                       <div className="mt-1 border-t border-emerald-200 pt-1 text-[9px] font-extrabold uppercase text-emerald-800">
