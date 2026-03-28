@@ -3,6 +3,7 @@ import { Match, Team, TournamentRules, SetScore } from '../types';
 import { MatchCard } from './MatchCard';
 import { Users, Layout, ArrowRight, Trophy, Clock, Plus, Trash2 } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { matchIsOnNet } from '../lib/matchSchedule';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface WinnersListViewProps {
@@ -33,7 +34,7 @@ export const WinnersListView: React.FC<WinnersListViewProps> = ({
   rules
 }) => {
   const [newTeamName, setNewTeamName] = React.useState('');
-  const activeMatches = matches.filter(m => m.netIndex !== undefined && !m.winnerId);
+  const activeMatches = matches.filter(m => matchIsOnNet(m) && !m.winnerId);
   const completedMatches = matches.filter(m => m.winnerId).sort((a, b) => (b.round || 0) - (a.round || 0));
 
   const getTeam = (id: string | null) => teams.find(t => t.id === id);

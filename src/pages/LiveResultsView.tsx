@@ -6,6 +6,7 @@ import type { Match, Team, TournamentFormat, TournamentRules } from '../types';
 import { cn } from '../lib/utils';
 import { Radio, LayoutGrid, Trophy, Users, Clock, Home } from 'lucide-react';
 import { BracketReferenceStrip } from '../components/EliminationCourtView';
+import { matchIsOnNet, matchIsWaitingForCourt } from '../lib/matchSchedule';
 
 const FORMAT_LABEL: Record<TournamentFormat, string> = {
   single: 'Single elimination',
@@ -86,12 +87,21 @@ export function LiveResultsView() {
   const teamName = (id: string | null | undefined) =>
     id ? teams.find(t => t.id === id)?.name ?? id.slice(0, 6) : '—';
 
+  const winnersQueuePairs = useMemo(() => {
+    if (format !== 'winners-list') return [];
+    const pairs: { a: string; b: string }[] = [];
+    for (let i = 0; i + 1 < queue.length; i += 2) {
+      pairs.push({ a: queue[i]!, b: queue[i + 1]! });
+    }
+    return pairs;
+  }, [format, queue]);
+
   const { queuedMatches, recentDone, onCourtByNet } = useMemo(() => {
     const active = matches
-      .filter(m => m.netIndex !== undefined && !m.winnerId)
+      .filter(m => matchIsOnNet(m) && !m.winnerId)
       .sort((a, b) => (a.netIndex ?? 0) - (b.netIndex ?? 0));
     const queued = matches
-      .filter(m => m.team1Id && m.team2Id && !m.winnerId && m.netIndex === undefined)
+      .filter(m => matchIsWaitingForCourt(m))
       .sort((a, b) => {
         const ga = a.poolGroup ?? '';
         const gb = b.poolGroup ?? '';
@@ -214,9 +224,32 @@ export function LiveResultsView() {
           <p className="text-xs font-semibold text-zinc-700">
             Next matches waiting for a court — be ready when your team appears.
           </p>
-          {queuedMatches.length === 0 ? (
+          {format === 'winners-list' && winnersQueuePairs.length > 0 && (
+            <div className="mb-4 space-y-2">
+              <p className="text-[10px] font-bold uppercase text-zinc-600">From waiting list (order)</p>
+              <ol className="space-y-2">
+                {winnersQueuePairs.slice(0, 15).map((p, i) => (
+                  <li
+                    key={`${p.a}-${p.b}-${i}`}
+                    className="flex flex-wrap items-center justify-between gap-2 border-2 border-dashed border-[#808080] bg-white px-3 py-2 text-sm font-bold"
+                  >
+                    <span className="text-[10px] font-extrabold text-[#000080]">#{i + 1}</span>
+                    <span className="min-w-0 flex-1 text-center">
+                      {teamName(p.a)}
+                      <span className="mx-2 text-zinc-400">vs</span>
+                      {teamName(p.b)}
+                    </span>
+                    <span className="text-[10px] text-zinc-500">Next wave</span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+
+          {queuedMatches.length === 0 && !(format === 'winners-list' && winnersQueuePairs.length > 0) ? (
             <p className="text-sm font-bold text-zinc-500">No matches waiting (or all courts are full).</p>
           ) : (
+            queuedMatches.length > 0 && (
             <ol className="space-y-2">
               {queuedMatches.slice(0, 20).map((m, i) => (
                 <li
@@ -237,6 +270,7 @@ export function LiveResultsView() {
                 </li>
               ))}
             </ol>
+            )
           )}
         </section>
 

@@ -19,6 +19,7 @@ import {
 } from './advance';
 import { matchOutcomeFromSets, isValidCompletedSet } from './scoring';
 import { resolveChampionTeamId } from './champion';
+import { matchIsOnNet, matchIsWaitingForCourt } from '../matchSchedule';
 import type { Match, Team, TournamentRules } from '../../types';
 
 const teams4 = (n: number): Team[] =>
@@ -34,6 +35,20 @@ const baseRules: TournamentRules = {
   maxConsecutiveWins: 3,
   onMaxWins: 'other-stays'
 };
+
+describe('matchSchedule', () => {
+  it('treats Firestore-style null netIndex as queued, not on net', () => {
+    const m = {
+      id: 'x',
+      team1Id: 'a',
+      team2Id: 'b',
+      round: 1,
+      netIndex: null
+    } as unknown as Match;
+    expect(matchIsOnNet(m)).toBe(false);
+    expect(matchIsWaitingForCourt(m)).toBe(true);
+  });
+});
 
 describe('parseBracketMatchIndex', () => {
   it('parses w1-0 and l3-2', () => {
@@ -171,7 +186,7 @@ describe('assignRoundRobinNets', () => {
   it('never assigns the same team to two incomplete netted matches', () => {
     const teams = teams4(4);
     const matches = assignRoundRobinNets(generateRoundRobin(teams), 4);
-    const active = matches.filter(m => m.netIndex !== undefined && !m.winnerId);
+    const active = matches.filter(m => matchIsOnNet(m) && !m.winnerId);
     const perTeam = new Map<string, number>();
     for (const m of active) {
       if (m.team1Id) perTeam.set(m.team1Id, (perTeam.get(m.team1Id) || 0) + 1);
@@ -185,7 +200,7 @@ describe('assignRoundRobinNets', () => {
   it('fills nets in parallel when teams do not overlap across chosen matches', () => {
     const teams = teams4(6);
     const matches = assignRoundRobinNets(generateRoundRobin(teams), 3);
-    const assigned = matches.filter(m => m.netIndex !== undefined && !m.winnerId);
+    const assigned = matches.filter(m => matchIsOnNet(m) && !m.winnerId);
     expect(assigned.length).toBe(3);
     expect(new Set(assigned.map(m => m.netIndex)).size).toBe(3);
   });
@@ -195,8 +210,8 @@ describe('assignRoundRobinNets', () => {
     const base = generateRoundRobin(teams);
     const a = assignNets(base, 3);
     const b = assignRoundRobinNets(base, 3);
-    const ca = a.filter(m => m.netIndex !== undefined && !m.winnerId).length;
-    const cb = b.filter(m => m.netIndex !== undefined && !m.winnerId).length;
+    const ca = a.filter(m => matchIsOnNet(m) && !m.winnerId).length;
+    const cb = b.filter(m => matchIsOnNet(m) && !m.winnerId).length;
     expect(ca).toBe(cb);
   });
 });

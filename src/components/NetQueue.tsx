@@ -1,6 +1,7 @@
 import React from 'react';
 import { Match, Team } from '../types';
 import { LayoutGrid, Clock } from 'lucide-react';
+import { matchIsOnNet, matchIsWaitingForCourt } from '../lib/matchSchedule';
 
 interface NetQueueProps {
   matches: Match[];
@@ -9,11 +10,9 @@ interface NetQueueProps {
 
 export const NetQueue: React.FC<NetQueueProps> = ({ matches, teams }) => {
   const activeMatches = matches
-    .filter(m => m.netIndex !== undefined && !m.winnerId)
+    .filter(m => matchIsOnNet(m) && !m.winnerId)
     .sort((a, b) => (a.netIndex || 0) - (b.netIndex || 0));
-  const queuedMatches = matches.filter(
-    m => m.team1Id && m.team2Id && !m.winnerId && m.netIndex === undefined
-  );
+  const queuedMatches = matches.filter(m => matchIsWaitingForCourt(m));
 
   if (activeMatches.length === 0 && queuedMatches.length === 0) return null;
 

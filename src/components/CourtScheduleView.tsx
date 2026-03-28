@@ -3,6 +3,7 @@ import { Match, Team, TournamentRules, SetScore } from '../types';
 import { cn } from '../lib/utils';
 import { Trophy, Layout, Clock, Users } from 'lucide-react';
 import { MatchCard } from './MatchCard';
+import { matchIsOnNet, matchIsWaitingForCourt } from '../lib/matchSchedule';
 
 export interface CourtScheduleViewProps {
   matches: Match[];
@@ -36,10 +37,10 @@ export const CourtScheduleView: React.FC<CourtScheduleViewProps> = ({
 
   const { queuedMatches, activeMatches, completedMatches, standings } = useMemo(() => {
     const active = matches
-      .filter(m => m.netIndex !== undefined && !m.winnerId)
+      .filter(m => matchIsOnNet(m) && !m.winnerId)
       .sort((a, b) => (a.netIndex ?? 0) - (b.netIndex ?? 0));
     const queued = matches
-      .filter(m => m.team1Id && m.team2Id && !m.winnerId && m.netIndex === undefined)
+      .filter(m => matchIsWaitingForCourt(m))
       .sort((a, b) => (a.round ?? 0) - (b.round ?? 0) || a.id.localeCompare(b.id));
     const done = matches.filter(m => m.winnerId).sort((a, b) => (b.round ?? 0) - (a.round ?? 0));
 

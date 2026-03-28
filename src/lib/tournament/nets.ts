@@ -1,4 +1,5 @@
 import type { Match, TournamentFormat } from '../../types';
+import { matchIsOnNet } from '../matchSchedule';
 
 function winnersBracketRound1Complete(matches: Match[]): boolean {
   const r1 = matches.filter(m => m.bracketType === 'winners' && m.round === 1);
@@ -27,19 +28,19 @@ function assignNetsWithOrder(
     changed = false;
     const busy = new Set<string>();
     for (const m of updated) {
-      if (m.winnerId || m.netIndex === undefined) continue;
+      if (m.winnerId || !matchIsOnNet(m)) continue;
       if (m.team1Id) busy.add(m.team1Id);
       if (m.team2Id) busy.add(m.team2Id);
     }
     const occupied = new Set(
       updated
-        .filter(m => m.netIndex !== undefined && !m.winnerId)
+        .filter(m => matchIsOnNet(m) && !m.winnerId)
         .map(m => m.netIndex as number)
     );
 
     for (const i of orderIndices) {
       const m = updated[i];
-      if (!m || !m.team1Id || !m.team2Id || m.winnerId || m.netIndex !== undefined) continue;
+      if (!m || !m.team1Id || !m.team2Id || m.winnerId || matchIsOnNet(m)) continue;
       if (holdWb2 && !doubleElimNetEligible(updated, m)) continue;
       if (busy.has(m.team1Id) || busy.has(m.team2Id)) continue;
 

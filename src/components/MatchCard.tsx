@@ -2,6 +2,7 @@ import React from 'react';
 import { Match, Team, TournamentRules, SetScore } from '../types';
 import { AlertCircle } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { matchIsOnNet } from '../lib/matchSchedule';
 import { isValidCompletedSet, validateMatchSets } from '../lib/tournament/scoring';
 
 interface MatchCardProps {
@@ -129,7 +130,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
 
   return (
     <div className="match-card w-full">
-      {showNetBadge && match.netIndex !== undefined && !match.winnerId && (
+      {showNetBadge && matchIsOnNet(match) && !match.winnerId && (
         <div className="mb-2 flex justify-end">
           <div className="w95-inset px-2 py-0.5 text-[10px] font-semibold text-zinc-800">
             NET {match.netIndex + 1}
