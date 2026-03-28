@@ -17,10 +17,10 @@ import { resolveDisplayChampion } from './lib/tournament/champion';
 import { TeamCalculator } from './components/TeamCalculator';
 import { BracketView } from './components/BracketView';
 import { PoolPlayView } from './components/PoolPlayView';
-import { Trophy, Settings, Play, Plus, Trash2, LayoutGrid, GitMerge, Repeat, Users, Share2, LogIn, ShieldCheck, Info, RefreshCw, CheckCircle, Home } from 'lucide-react';
+import { Trophy, Play, Plus, Trash2, LayoutGrid, GitMerge, Repeat, Users, Share2, LogIn, ShieldCheck, Info, RefreshCw, CheckCircle, Home } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
-import { db, auth } from './firebase';
+import { db, auth, isFirebaseConfigured } from './firebase';
 import { 
   collection, 
   doc, 
@@ -125,9 +125,8 @@ export default function App() {
     if (tournamentId) {
       localStorage.setItem('tournament_id', tournamentId);
       return;
-    } else {
-      localStorage.removeItem('tournament_id');
     }
+    localStorage.removeItem('tournament_id');
     localStorage.setItem('tournament_teams', JSON.stringify(teams));
     localStorage.setItem('tournament_matches', JSON.stringify(matches));
     localStorage.setItem('tournament_queue', JSON.stringify(queue));
@@ -140,8 +139,16 @@ export default function App() {
     localStorage.setItem('tournament_rules', JSON.stringify(rules));
   }, [teams, matches, queue, activeNets, format, isStarted, isFinished, activeTab, numNets, rules, tournamentId]);
 
+  useEffect(() => {
+    if (tournamentId && !isFirebaseConfigured) {
+      setTournamentId(null);
+      localStorage.removeItem('tournament_id');
+    }
+  }, [tournamentId, isFirebaseConfigured]);
+
   // Auth + redirect return (mobile / popup-blocked)
   useEffect(() => {
+    if (!auth) return;
     getRedirectResult(auth).catch(() => {});
     const unsubscribe = onAuthStateChanged(auth, (u) => {
       setUser(u);
@@ -150,6 +157,12 @@ export default function App() {
   }, []);
 
   const login = async () => {
+    if (!auth) {
+      window.alert(
+        'Cloud sign-in is not set up. Copy .env.example to .env and add your Firebase web app keys, then restart the dev server.'
+      );
+      return;
+    }
     const provider = new GoogleAuthProvider();
     provider.setCustomParameters({ prompt: 'select_account' });
     const coarse =
@@ -178,11 +191,13 @@ export default function App() {
     }
   };
 
-  const logout = () => signOut(auth);
+  const logout = () => {
+    if (auth) void signOut(auth);
+  };
 
   // Sync Tournament
   useEffect(() => {
-    if (!tournamentId) return;
+    if (!tournamentId || !db) return;
 
     const unsubTournament = onSnapshot(doc(db, 'tournaments', tournamentId), (snapshot) => {
       if (snapshot.exists()) {
@@ -217,7 +232,7 @@ export default function App() {
   }, [tournamentId, user]);
 
   const createTournament = async () => {
-    if (!user) return;
+    if (!user || !db) return;
     const code = Math.random().toString(36).substring(2, 8).toUpperCase();
     const newTournamentRef = doc(collection(db, 'tournaments'));
     const id = newTournamentRef.id;
@@ -247,6 +262,10 @@ export default function App() {
   };
 
   const joinTournament = async () => {
+    if (!db) {
+      window.alert('Cloud sync is not configured.');
+      return;
+    }
     const q = query(collection(db, 'tournaments'), where('inviteCode', '==', joinCode.toUpperCase()));
     const snapshot = await getDocs(q);
     if (!snapshot.empty) {
@@ -260,7 +279,7 @@ export default function App() {
     console.log('Adding team:', name);
     const newId = `team-${Date.now()}`;
     
-    if (tournamentId) {
+    if (tournamentId && db) {
       const newTeam = { id: newId, name: name || `Team ${teams.length + 1}`, consecutiveWins: 0 };
       await setDoc(doc(db, 'tournaments', tournamentId, 'teams', newId), newTeam);
       if (format === 'winners-list') {
@@ -280,7 +299,7 @@ export default function App() {
   };
 
   const removeTeam = async (id: string) => {
-    if (tournamentId) {
+    if (tournamentId && db) {
       await deleteDoc(doc(db, 'tournaments', tournamentId, 'teams', id));
       // If it's in the queue, remove it
       if (queue.includes(id)) {
@@ -297,7 +316,7 @@ export default function App() {
   };
 
   const updateTeamName = async (id: string, name: string) => {
-    if (tournamentId) {
+    if (tournamentId && db) {
       await updateDoc(doc(db, 'tournaments', tournamentId, 'teams', id), { name });
     } else {
       setTeams(teams.map(t => t.id === id ? { ...t, name } : t));
@@ -307,7 +326,7 @@ export default function App() {
   const updateRules = async (newRules: Partial<TournamentRules>) => {
     const updated = sanitizeRules({ ...rules, ...newRules });
     setRules(updated);
-    if (tournamentId) {
+    if (tournamentId && db) {
       await updateDoc(doc(db, 'tournaments', tournamentId), { rules: updated });
     }
   };
@@ -361,7 +380,7 @@ export default function App() {
         }
       }
 
-      if (tournamentId) {
+      if (tournamentId && db) {
         // Save teams if they were generated
         if (teams.length === 0) {
           for (const team of currentTeams) {
@@ -394,7 +413,7 @@ export default function App() {
       return;
     }
 
-    if (tournamentId) {
+    if (tournamentId && db) {
       await updateDoc(doc(db, 'tournaments', tournamentId), { isStarted: true, isFinished: false });
       for (const match of initialMatches) {
         await setDoc(doc(db, 'tournaments', tournamentId, 'matches', match.id), match);
@@ -408,7 +427,7 @@ export default function App() {
 
   const abortTournament = async () => {
     if (window.confirm("Are you sure you want to abort the tournament and return home? All progress will be lost.")) {
-      if (tournamentId) {
+      if (tournamentId && db) {
         // Clear matches in Firestore
         const matchesRef = collection(db, 'tournaments', tournamentId, 'matches');
         const snapshot = await getDocs(matchesRef);
@@ -433,7 +452,7 @@ export default function App() {
 
   const endTournament = async () => {
     if (window.confirm("End the tournament? This will finalize the results.")) {
-      if (tournamentId) {
+      if (tournamentId && db) {
         await updateDoc(doc(db, 'tournaments', tournamentId), { isFinished: true });
       } else {
         setIsFinished(true);
@@ -443,7 +462,7 @@ export default function App() {
 
   const restartTournament = async () => {
     if (window.confirm("Start over? This will clear all current scores and matches.")) {
-      if (tournamentId) {
+      if (tournamentId && db) {
         // Clear matches in Firestore
         const matchesRef = collection(db, 'tournaments', tournamentId, 'matches');
         const snapshot = await getDocs(matchesRef);
@@ -474,7 +493,7 @@ export default function App() {
 
   const resetToSetup = async () => {
     if (window.confirm("Start a new tournament? This will clear current results.")) {
-      if (tournamentId) {
+      if (tournamentId && db) {
         // Clear matches in Firestore
         const matchesRef = collection(db, 'tournaments', tournamentId, 'matches');
         const snapshot = await getDocs(matchesRef);
@@ -547,7 +566,7 @@ export default function App() {
         }
       }
 
-      if (tournamentId) {
+      if (tournamentId && db) {
         const updates: any = { queue: newQueue };
         if (format === 'winners-list') {
           for (const [net, matchId] of Object.entries(newActiveNets)) {
@@ -587,7 +606,7 @@ export default function App() {
 
   const onLeaveQueue = async (teamId: string) => {
     const newQueue = queue.filter(id => id !== teamId);
-    if (tournamentId) {
+    if (tournamentId && db) {
       await updateDoc(doc(db, 'tournaments', tournamentId), { queue: newQueue });
     } else {
       setQueue(newQueue);
@@ -667,7 +686,7 @@ export default function App() {
           netIndex
         };
         
-        if (tournamentId) {
+        if (tournamentId && db) {
           await setDoc(doc(db, 'tournaments', tournamentId, 'matches', matchId), currentMatch);
           await setDoc(doc(db, 'tournaments', tournamentId, 'matches', nextMatchId), nextMatch);
           // Reset wins if team is new or both off
@@ -695,7 +714,7 @@ export default function App() {
         }
       } else {
         // Net becomes empty
-        if (tournamentId) {
+        if (tournamentId && db) {
           await setDoc(doc(db, 'tournaments', tournamentId, 'matches', matchId), currentMatch);
           await updateDoc(doc(db, 'tournaments', tournamentId, 'teams', winnerId), { consecutiveWins: reachedMax ? 0 : updatedWinnerWins });
           await updateDoc(doc(db, 'tournaments', tournamentId, 'teams', loserId), { consecutiveWins: 0 });
@@ -733,7 +752,7 @@ export default function App() {
 
     const matchesWithNets = assignNets(updatedMatches, numNets);
 
-    if (tournamentId) {
+    if (tournamentId && db) {
       await setDoc(doc(db, 'tournaments', tournamentId, 'matches', matchId), currentMatch);
 
       for (const m of matchesWithNets) {
@@ -758,7 +777,7 @@ export default function App() {
 
   const finishTournament = async () => {
     if (window.confirm("Finish the tournament? This will finalize the results.")) {
-      if (tournamentId) {
+      if (tournamentId && db) {
         await updateDoc(doc(db, 'tournaments', tournamentId), { isFinished: true });
       } else {
         setIsFinished(true);
@@ -768,7 +787,7 @@ export default function App() {
 
   const resetTournament = async () => {
     if (window.confirm("Are you sure you want to reset the tournament? All scores will be lost.")) {
-      if (tournamentId) {
+      if (tournamentId && db) {
         // Clear matches in Firestore
         const matchesRef = collection(db, 'tournaments', tournamentId, 'matches');
         const snapshot = await getDocs(matchesRef);
@@ -803,13 +822,13 @@ export default function App() {
     ) {
       return;
     }
-    if (tournamentId) {
-      if (!isCreator) {
-        setTournamentId(null);
-        localStorage.removeItem('tournament_id');
-        setIsStarted(false);
-        return;
-      }
+    if (tournamentId && !isCreator) {
+      setTournamentId(null);
+      localStorage.removeItem('tournament_id');
+      setIsStarted(false);
+      return;
+    }
+    if (tournamentId && db && isCreator) {
       await updateDoc(doc(db, 'tournaments', tournamentId), { isStarted: false });
     }
     setIsStarted(false);
@@ -847,7 +866,7 @@ export default function App() {
               <div className="flex flex-wrap items-center justify-end gap-1">
                 {user ? (
                   <>
-                    {!tournamentId && !isStarted && (
+                    {isFirebaseConfigured && !tournamentId && !isStarted && (
                       <>
                         <input
                           type="text"
@@ -858,7 +877,7 @@ export default function App() {
                         />
                         <button
                           type="button"
-                          onClick={joinTournament}
+                          onClick={() => void joinTournament()}
                           className="w95-btn flex items-center gap-1 text-xs"
                         >
                           <LogIn className="h-3.5 w-3.5" />
@@ -894,11 +913,21 @@ export default function App() {
                         </button>
                         <button
                           type="button"
-                          onClick={resetTournament}
+                          onClick={() => void resetTournament()}
                           className="w95-btn flex items-center gap-1 text-xs"
+                          title="Clear scores and return to setup for this cloud tournament"
                         >
-                          <Settings className="h-3.5 w-3.5" />
+                          <RefreshCw className="h-3.5 w-3.5" />
                           <span className="hidden sm:inline">Reset</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void resetToSetup()}
+                          className="w95-btn flex items-center gap-1 text-xs"
+                          title="Leave this tournament and start fresh (local or new cloud)"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          <span className="hidden sm:inline">New</span>
                         </button>
                       </>
                     )}
@@ -909,16 +938,22 @@ export default function App() {
                 ) : (
                   <>
                     <span className="hidden text-xs font-semibold text-zinc-600 sm:inline">
-                      Local
+                      {isFirebaseConfigured ? 'Local' : 'Local only'}
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => void login()}
-                      className="w95-btn-default flex items-center gap-1 text-xs"
-                    >
-                      <LogIn className="h-3.5 w-3.5" />
-                      Sign in
-                    </button>
+                    {isFirebaseConfigured ? (
+                      <button
+                        type="button"
+                        onClick={() => void login()}
+                        className="w95-btn-default flex items-center gap-1 text-xs"
+                      >
+                        <LogIn className="h-3.5 w-3.5" />
+                        Sign in
+                      </button>
+                    ) : (
+                      <span className="w95-inset max-w-[10rem] truncate px-2 py-1 text-[10px] font-medium text-zinc-600 sm:max-w-none sm:text-xs">
+                        Add Firebase in .env to enable sign-in
+                      </span>
+                    )}
                   </>
                 )}
               </div>
@@ -999,7 +1034,7 @@ export default function App() {
                           className={cn(
                             "px-4 py-2 rounded-lg text-sm font-bold border transition-all",
                             rules.bestOf === b 
-                              ? "bg-grey-blue text-white border-grey-blue" 
+                              ? "border-slate-700 bg-slate-800 text-white" 
                               : "bg-white text-zinc-600 border-zinc-200 hover:border-zinc-300"
                           )}
                         >
@@ -1019,7 +1054,7 @@ export default function App() {
                     >
                       <div className={cn(
                         "w-12 h-6 rounded-full transition-all relative",
-                        rules.winByTwo ? "bg-grey-blue" : "bg-zinc-200"
+                        rules.winByTwo ? "bg-emerald-600 shadow-inner ring-1 ring-emerald-800/30" : "bg-zinc-300"
                       )}>
                         <div className={cn(
                           "absolute top-1 w-4 h-4 bg-white rounded-full transition-all",
@@ -1038,7 +1073,7 @@ export default function App() {
                     >
                       <div className={cn(
                         "w-12 h-6 rounded-full transition-all relative",
-                        rules.serveToWin ? "bg-grey-blue" : "bg-zinc-200"
+                        rules.serveToWin ? "bg-emerald-600 shadow-inner ring-1 ring-emerald-800/30" : "bg-zinc-300"
                       )}>
                         <div className={cn(
                           "absolute top-1 w-4 h-4 bg-white rounded-full transition-all",
@@ -1059,7 +1094,7 @@ export default function App() {
                         >
                           <div className={cn(
                             "w-12 h-6 rounded-full transition-all relative",
-                            rules.winnerStays ? "bg-grey-blue" : "bg-zinc-200"
+                            rules.winnerStays ? "bg-emerald-600 shadow-inner ring-1 ring-emerald-800/30" : "bg-zinc-300"
                           )}>
                             <div className={cn(
                               "absolute top-1 w-4 h-4 bg-white rounded-full transition-all",
@@ -1083,7 +1118,7 @@ export default function App() {
                                   className={cn(
                                     "px-3 py-1.5 rounded-lg text-xs font-bold border transition-all",
                                     rules.maxConsecutiveWins === w 
-                                      ? "bg-grey-blue text-white border-grey-blue" 
+                                      ? "border-slate-700 bg-slate-800 text-white" 
                                       : "bg-white text-zinc-600 border-zinc-200 hover:border-zinc-300"
                                   )}
                                 >
@@ -1100,7 +1135,7 @@ export default function App() {
                                   className={cn(
                                     "flex-1 px-3 py-2 rounded-lg text-[10px] font-bold border transition-all",
                                     rules.onMaxWins === 'other-stays' 
-                                      ? "bg-grey-blue text-white border-grey-blue" 
+                                      ? "border-slate-700 bg-slate-800 text-white" 
                                       : "bg-white text-zinc-600 border-zinc-200 hover:border-zinc-300"
                                   )}
                                 >
@@ -1111,7 +1146,7 @@ export default function App() {
                                   className={cn(
                                     "flex-1 px-3 py-2 rounded-lg text-[10px] font-bold border transition-all",
                                     rules.onMaxWins === 'both-off' 
-                                      ? "bg-grey-blue text-white border-grey-blue" 
+                                      ? "border-slate-700 bg-slate-800 text-white" 
                                       : "bg-white text-zinc-600 border-zinc-200 hover:border-zinc-300"
                                   )}
                                 >
@@ -1134,11 +1169,12 @@ export default function App() {
                           onChange={(e) => {
                             const val = parseInt(e.target.value);
                             setNumNets(val);
-                            if (tournamentId) updateDoc(doc(db, 'tournaments', tournamentId), { numNets: val });
+                            if (tournamentId && db)
+                              void updateDoc(doc(db, 'tournaments', tournamentId), { numNets: val });
                           }}
-                          className="flex-1 accent-grey-blue h-2 bg-zinc-100 rounded-lg appearance-none cursor-pointer"
+                          className="flex-1 accent-slate-700 h-2 bg-zinc-100 rounded-lg appearance-none cursor-pointer"
                         />
-                        <div className="w-12 h-12 rounded-xl bg-grey-blue/5 border border-grey-blue/20 flex items-center justify-center text-lg font-bold text-grey-blue">
+                        <div className="w-12 h-12 rounded-xl border border-slate-600/40 bg-slate-100 flex items-center justify-center text-lg font-bold text-slate-800">
                           {numNets}
                         </div>
                       </div>
@@ -1159,9 +1195,9 @@ export default function App() {
                               const val = parseInt(e.target.value);
                               setPreSignupCount(val);
                             }}
-                            className="flex-1 accent-grey-blue h-2 bg-zinc-100 rounded-lg appearance-none cursor-pointer"
+                            className="flex-1 accent-slate-700 h-2 bg-zinc-100 rounded-lg appearance-none cursor-pointer"
                           />
-                          <div className="w-12 h-12 rounded-xl bg-grey-blue/5 border border-grey-blue/20 flex items-center justify-center text-lg font-bold text-grey-blue">
+                          <div className="w-12 h-12 rounded-xl border border-slate-600/40 bg-slate-100 flex items-center justify-center text-lg font-bold text-slate-800">
                             {preSignupCount}
                           </div>
                         </div>
@@ -1175,7 +1211,7 @@ export default function App() {
               <div className="bg-white p-6 rounded-xl border border-zinc-200 shadow-sm">
                 <div className="flex items-center justify-between mb-6">
                   <h2 className="text-lg font-semibold flex items-center gap-2">
-                    <Users className="w-5 h-5 text-grey-blue" />
+                    <Users className="w-5 h-5 text-slate-700" />
                     Teams ({teams.length})
                   </h2>
                   <div className="flex gap-2">
@@ -1189,7 +1225,7 @@ export default function App() {
                           }));
                           setTeams([...teams, ...newTeams]);
                         }}
-                        className="bg-grey-green/10 text-grey-blue px-4 py-2 rounded-lg text-sm font-medium hover:bg-grey-green/20 transition-colors flex items-center gap-2"
+                        className="bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-950 rounded-lg transition-colors hover:bg-emerald-100 flex items-center gap-2"
                       >
                         <Plus className="w-4 h-4" />
                         Quick Add {preSignupCount}
@@ -1197,7 +1233,7 @@ export default function App() {
                     )}
                     <button
                       onClick={() => addTeam()}
-                      className="bg-grey-blue text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-grey-blue/90 transition-colors flex items-center gap-2"
+                      className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-900 flex items-center gap-2"
                     >
                       <Plus className="w-4 h-4" />
                       Add Team
@@ -1242,7 +1278,7 @@ export default function App() {
               {activeTab === 'tournaments' && (
                 <div className="bg-white p-6 rounded-xl border border-zinc-200 shadow-sm">
                   <h2 className="text-lg font-semibold mb-6 flex items-center gap-2">
-                    <LayoutGrid className="w-5 h-5 text-grey-blue" />
+                    <LayoutGrid className="w-5 h-5 text-slate-700" />
                     Tournament Style
                   </h2>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1258,11 +1294,11 @@ export default function App() {
                         className={cn(
                           "p-4 rounded-xl border-2 text-left transition-all",
                           format === style.id 
-                            ? "border-grey-blue bg-grey-green/5 ring-4 ring-grey-green/5" 
+                            ? "border-slate-600 bg-emerald-50 ring-4 ring-emerald-200/60" 
                             : "border-zinc-100 hover:border-zinc-200 bg-white"
                         )}
                       >
-                        <style.icon className={cn("w-6 h-6 mb-2", format === style.id ? "text-grey-blue" : "text-zinc-400")} />
+                        <style.icon className={cn("w-6 h-6 mb-2", format === style.id ? "text-slate-700" : "text-zinc-400")} />
                         <div className="font-bold text-sm">{style.name}</div>
                         <div className="text-xs text-zinc-500 mt-1">{style.desc}</div>
                       </button>
@@ -1275,29 +1311,49 @@ export default function App() {
             {/* Right Column: Calculator & Start */}
             <div className="space-y-6">
               {!tournamentId && (
-                <div className="bg-white p-6 rounded-xl border border-zinc-200 shadow-sm">
-                  <h3 className="font-bold text-zinc-900 mb-2 flex items-center gap-2">
-                    <Share2 className="w-5 h-5 text-grey-blue" />
-                    Cloud Sync (Optional)
+                <div className="rounded-xl border border-zinc-200 bg-white p-6 shadow-sm">
+                  <h3 className="mb-2 flex items-center gap-2 font-bold text-zinc-900">
+                    <Share2 className="h-5 w-5 text-slate-700" />
+                    Cloud sync (optional)
                   </h3>
-                  <p className="text-zinc-500 text-sm mb-6">
-                    Go Live to share with players and update scores across all devices in real-time.
-                  </p>
-                  {!user ? (
-                    <button
-                      onClick={login}
-                      className="w-full bg-grey-green/10 text-grey-blue py-3 rounded-lg font-bold hover:bg-grey-green/20 transition-colors flex items-center justify-center gap-2"
-                    >
-                      <LogIn className="w-4 h-4" />
-                      Sign in to Go Live
-                    </button>
+                  {!isFirebaseConfigured ? (
+                    <>
+                      <p className="mb-4 text-sm text-zinc-600">
+                        Firebase is not configured in this build. Copy{' '}
+                        <code className="rounded bg-zinc-100 px-1 py-0.5 text-xs">.env.example</code> to{' '}
+                        <code className="rounded bg-zinc-100 px-1 py-0.5 text-xs">.env</code>, add your web
+                        app keys from the Firebase console, enable Google sign-in and Firestore, then restart{' '}
+                        <code className="rounded bg-zinc-100 px-1 py-0.5 text-xs">npm run dev</code>.
+                      </p>
+                      <p className="text-xs text-zinc-500">
+                        Until then, everything runs locally in this browser; data is still saved here when you are
+                        not in a cloud tournament.
+                      </p>
+                    </>
                   ) : (
-                    <button
-                      onClick={createTournament}
-                      className="w-full bg-grey-blue text-white py-3 rounded-lg font-bold hover:bg-grey-blue/90 transition-colors"
-                    >
-                      Create Cloud Tournament
-                    </button>
+                    <>
+                      <p className="mb-6 text-sm text-zinc-500">
+                        Go live to share invite codes and sync scores across devices.
+                      </p>
+                      {!user ? (
+                        <button
+                          type="button"
+                          onClick={() => void login()}
+                          className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-50 py-3 font-bold text-emerald-950 transition-colors hover:bg-emerald-100"
+                        >
+                          <LogIn className="h-4 w-4" />
+                          Sign in to go live
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => void createTournament()}
+                          className="w-full rounded-lg bg-slate-800 py-3 font-bold text-white transition-colors hover:bg-slate-900"
+                        >
+                          Create cloud tournament
+                        </button>
+                      )}
+                    </>
                   )}
                 </div>
               )}
@@ -1308,25 +1364,35 @@ export default function App() {
                 <div className="flex flex-col gap-3">
                   <button
                     onClick={() => setIsStarted(true)}
-                    className="w-full bg-grey-green text-white py-4 rounded-xl font-bold text-lg shadow-lg shadow-grey-green/20 hover:bg-grey-green/90 transition-all flex items-center justify-center gap-3"
+                    className="flex w-full items-center justify-center gap-3 rounded-xl bg-emerald-600 py-4 text-lg font-bold text-white shadow-lg shadow-emerald-900/20 transition-all hover:bg-emerald-700"
                   >
                     <Play className="w-6 h-6 fill-current" />
                     Resume {activeTab === 'tournaments' ? 'Tournament' : 'Open Play'}
                   </button>
                   <button
-                    onClick={restartTournament}
-                    disabled={tournamentId && !isCreator}
-                    className="w-full bg-white text-zinc-500 py-3 rounded-xl font-bold text-sm border border-zinc-200 hover:bg-zinc-50 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    type="button"
+                    onClick={() => void restartTournament()}
+                    disabled={!!tournamentId && !isCreator}
+                    className="w-full bg-white py-3 rounded-xl font-bold text-sm border border-zinc-200 text-zinc-700 hover:bg-zinc-50 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <RefreshCw className="w-4 h-4" />
-                    Reset & Start New
+                    Restart bracket
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void resetToSetup()}
+                    disabled={!!tournamentId && !isCreator}
+                    className="w-full bg-white py-3 rounded-xl font-bold text-sm border border-zinc-200 text-zinc-700 hover:bg-zinc-50 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Plus className="w-4 h-4" />
+                    New tournament
                   </button>
                 </div>
               ) : (
                 <button
                   onClick={startTournament}
                   disabled={(activeTab === 'tournaments' && teams.length < 2) || (activeTab === 'winners-list' && preSignupCount < 2) || (tournamentId && !isCreator)}
-                  className="w-full bg-grey-blue text-white py-4 rounded-xl font-bold text-lg shadow-lg shadow-grey-blue/20 hover:bg-grey-blue/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
+                  className="flex w-full cursor-pointer items-center justify-center gap-3 rounded-xl bg-slate-800 py-4 text-lg font-bold text-white shadow-lg shadow-slate-900/25 transition-all hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Play className="w-6 h-6 fill-current" />
                   {tournamentId && !isCreator ? 'Waiting for Creator...' : activeTab === 'tournaments' ? 'Start Tournament' : 'Start Open Play'}
@@ -1458,8 +1524,13 @@ export default function App() {
                   : 'Tournament in progress'
                 : 'Ready to set up'}
             </span>
-            {tournamentId && <span>Cloud sync</span>}
-            {!tournamentId && <span>Local only</span>}
+            {!isFirebaseConfigured ? (
+              <span>Firebase off — local only</span>
+            ) : tournamentId ? (
+              <span>Cloud sync</span>
+            ) : (
+              <span>Local only</span>
+            )}
           </footer>
         </div>
       </div>

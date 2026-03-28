@@ -96,7 +96,10 @@
   @apply min-h-11 flex-1 rounded-md px-2 text-xs font-semibold text-zinc-700 sm:text-sm;
 }
 .w95-segment button[data-active='true'] {
-  @apply bg-white text-slate-900 shadow-sm border border-zinc-200;
+  @apply border border-slate-700 bg-slate-800 text-white shadow-sm;
+}
+.w95-segment button[data-active='false'] {
+  @apply text-zinc-600;
 }
 
 .bracket-connector {

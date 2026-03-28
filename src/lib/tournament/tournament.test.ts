@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { generateSingleElimination, generateDoubleElimination } from './generate';
+import {
+  generateSingleElimination,
+  generateDoubleElimination,
+  generatePlayTwice
+} from './generate';
+import { assignNets } from './nets';
 import {
   parseBracketMatchIndex,
   propagateWinnerToNext,
@@ -136,5 +141,29 @@ describe('generateDoubleElimination', () => {
     const m = generateDoubleElimination(teams4(4));
     expect(m.some(x => x.id === 'gf-1')).toBe(true);
     expect(m.some(x => x.id === 'gf-2')).toBe(true);
+  });
+});
+
+describe('assignNets (play-twice)', () => {
+  it('never assigns the same team to two incomplete netted matches', () => {
+    const teams = teams4(4);
+    const matches = assignNets(generatePlayTwice(teams), 4);
+    const active = matches.filter(m => m.netIndex !== undefined && !m.winnerId);
+    const perTeam = new Map<string, number>();
+    for (const m of active) {
+      if (m.team1Id) perTeam.set(m.team1Id, (perTeam.get(m.team1Id) || 0) + 1);
+      if (m.team2Id) perTeam.set(m.team2Id, (perTeam.get(m.team2Id) || 0) + 1);
+    }
+    for (const n of perTeam.values()) {
+      expect(n).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('fills nets in parallel when teams do not overlap across chosen matches', () => {
+    const teams = teams4(6);
+    const matches = assignNets(generatePlayTwice(teams), 3);
+    const assigned = matches.filter(m => m.netIndex !== undefined && !m.winnerId);
+    expect(assigned.length).toBe(3);
+    expect(new Set(assigned.map(m => m.netIndex)).size).toBe(3);
   });
 });
