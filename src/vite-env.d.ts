@@ -7,6 +7,7 @@ interface ImportMetaEnv {
   readonly VITE_FIREBASE_STORAGE_BUCKET?: string;
   readonly VITE_FIREBASE_MESSAGING_SENDER_ID?: string;
   readonly VITE_FIREBASE_APP_ID?: string;
+  readonly VITE_FIREBASE_MEASUREMENT_ID?: string;
   readonly VITE_FIREBASE_FIRESTORE_DATABASE_ID?: string;
   /** Set to "true" to force-disable Firebase even if config exists. */
   readonly VITE_FIREBASE_DISABLED?: string;
