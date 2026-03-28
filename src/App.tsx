@@ -38,11 +38,11 @@ import {
   GoogleAuthProvider,
   signInWithPopup,
   signInWithRedirect,
-  getRedirectResult,
   onAuthStateChanged,
   User,
   signOut
 } from 'firebase/auth';
+import { consumeAuthRedirectError } from './authBootstrap';
 
 import { WinnersListView } from './components/WinnersListView';
 
@@ -146,10 +146,13 @@ export default function App() {
     }
   }, [tournamentId, isFirebaseConfigured]);
 
-  // Auth + redirect return (mobile / popup-blocked)
+  useEffect(() => {
+    const msg = consumeAuthRedirectError();
+    if (msg) window.alert(msg);
+  }, []);
+
   useEffect(() => {
     if (!auth) return;
-    getRedirectResult(auth).catch(() => {});
     const unsubscribe = onAuthStateChanged(auth, (u) => {
       setUser(u);
     });
@@ -167,8 +170,13 @@ export default function App() {
     provider.setCustomParameters({ prompt: 'select_account' });
     const coarse =
       typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
+    const useRedirect =
+      import.meta.env.PROD ||
+      coarse ||
+      (typeof window !== 'undefined' &&
+        /iPhone|iPad|iPod|Android/i.test(navigator.userAgent));
     try {
-      if (coarse) {
+      if (useRedirect) {
         await signInWithRedirect(auth, provider);
         return;
       }
