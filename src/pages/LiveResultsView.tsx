@@ -8,6 +8,7 @@ import { Radio, LayoutGrid, Trophy, Users, Clock, Home } from 'lucide-react';
 import { BracketReferenceStrip } from '../components/EliminationCourtView';
 import { matchIsOnNet, matchIsWaitingForCourt, isWinnersR1ByeSlot } from '../lib/matchSchedule';
 import { resolveDisplayChampion } from '../lib/tournament/champion';
+import { matchCountsTowardEliminationRecord } from '../lib/tournament/records';
 
 const FORMAT_LABEL: Record<TournamentFormat, string> = {
   single: 'Single elimination',
@@ -148,8 +149,9 @@ export function LiveResultsView() {
     const showGrp = teams.some(t => Boolean(t.group));
     const rows = teams.map(team => {
       const tm = poolMs.filter(m => m.team1Id === team.id || m.team2Id === team.id);
-      const wins = tm.filter(m => m.winnerId === team.id).length;
-      const losses = tm.filter(m => m.winnerId && m.winnerId !== team.id).length;
+      const rec = tm.filter(m => matchCountsTowardEliminationRecord(m));
+      const wins = rec.filter(m => m.winnerId === team.id).length;
+      const losses = rec.filter(m => m.winnerId && m.winnerId !== team.id).length;
       return { team, wins, losses, group: team.group ?? '' };
     });
     return rows.sort((a, b) => {

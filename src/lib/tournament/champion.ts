@@ -35,7 +35,7 @@ export function resolveDisplayChampion(
     let best: Team | null = null;
     let wBest = -1;
     for (const t of teams) {
-      const w = matches.filter(m => m.winnerId === t.id).length;
+      const w = matches.filter(m => m.winnerId === t.id && !m.byeWalkover).length;
       if (w > wBest) {
         wBest = w;
         best = t;

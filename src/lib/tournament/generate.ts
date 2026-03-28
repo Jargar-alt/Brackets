@@ -106,17 +106,27 @@ export function generateDoubleElimination(teams: Team[]): Match[] {
     }
   }
 
-  winners.filter(m => m.round === 1).forEach((m, i) => {
-    m.loserMatchId = `l1-${Math.floor(i / 2)}`;
-  });
+  const loserIds = new Set(losers.map(x => x.id));
+
+  winners
+    .filter(m => m.round === 1)
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .forEach((m, i) => {
+      const lid = `l1-${Math.floor(i / 2)}`;
+      if (loserIds.has(lid)) m.loserMatchId = lid;
+    });
 
   for (let r = 2; r <= k; r++) {
-    winners.filter(m => m.round === r).forEach((m, i) => {
-      const lbRound = (r - 1) * 2;
-      if (lbRound <= numLBRounds) {
-        m.loserMatchId = `l${lbRound}-${i}`;
-      }
-    });
+    winners
+      .filter(m => m.round === r)
+      .sort((a, b) => a.id.localeCompare(b.id))
+      .forEach((m, i) => {
+        const lbRound = (r - 1) * 2;
+        if (lbRound <= numLBRounds) {
+          const lid = `l${lbRound}-${i}`;
+          if (loserIds.has(lid)) m.loserMatchId = lid;
+        }
+      });
   }
 
   const wbFinal = winners.find(m => m.round === k);

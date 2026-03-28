@@ -45,6 +45,8 @@ export interface Match {
   /** Completed sets in order; when present, winner follows best-of rules. */
   sets?: SetScore[];
   winnerId?: string | null;
+  /** True when the winner advanced from a seeded R1 bye (no real match) — omit from team records. */
+  byeWalkover?: boolean;
   nextMatchId?: string | null;
   loserMatchId?: string | null;
   round: number;

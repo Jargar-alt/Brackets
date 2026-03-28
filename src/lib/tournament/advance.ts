@@ -77,11 +77,25 @@ export function autoAdvanceByes(matches: Match[]): Match[] {
       if (!isRoundOneByeAutoAdvanceMatch(m)) continue;
 
       if (m.team1Id && !m.team2Id) {
-        updated[i] = { ...m, winnerId: m.team1Id, score1: 1, score2: 0 };
+        updated[i] = {
+          ...m,
+          winnerId: m.team1Id,
+          byeWalkover: true,
+          score1: undefined,
+          score2: undefined,
+          sets: undefined
+        };
         changed = true;
         propagateWinner(updated, updated[i]);
       } else if (!m.team1Id && m.team2Id) {
-        updated[i] = { ...m, winnerId: m.team2Id, score1: 0, score2: 1 };
+        updated[i] = {
+          ...m,
+          winnerId: m.team2Id,
+          byeWalkover: true,
+          score1: undefined,
+          score2: undefined,
+          sets: undefined
+        };
         changed = true;
         propagateWinner(updated, updated[i]);
       } else if (!m.team1Id && !m.team2Id) {
@@ -169,7 +183,12 @@ export function propagateLoserToBracket(
     if (idx % 2 === 0) loserMatch.team1Id = loserId;
     else loserMatch.team2Id = loserId;
   } else {
-    loserMatch.team2Id = loserId;
+    // LB feeder from prior L round uses team1 (odd-r propagateWinner); WB drop uses team2 first.
+    if (!loserMatch.team2Id) {
+      loserMatch.team2Id = loserId;
+    } else if (!loserMatch.team1Id && loserMatch.team2Id !== loserId) {
+      loserMatch.team1Id = loserId;
+    }
   }
 
   updatedMatches[loserMatchIdx] = loserMatch;

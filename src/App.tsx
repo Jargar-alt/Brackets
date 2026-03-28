@@ -25,7 +25,7 @@ import { CourtScheduleView } from './components/CourtScheduleView';
 import { EliminationCourtView } from './components/EliminationCourtView';
 import { Trophy, Play, Plus, Trash2, LayoutGrid, GitMerge, Users, Share2, LogIn, ShieldCheck, Info, RefreshCw, CheckCircle, Home, ExternalLink, Copy } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { cn } from './lib/utils';
+import { cn, stripUndefined } from './lib/utils';
 import { db, auth, isFirebaseConfigured } from './firebase';
 import { 
   collection, 
@@ -446,7 +446,10 @@ export default function App() {
           activeNets: initialActiveNets
         });
         for (const match of initialMatches) {
-          await setDoc(doc(db, 'tournaments', tournamentId, 'matches', match.id), match);
+          await setDoc(
+            doc(db, 'tournaments', tournamentId, 'matches', match.id),
+            stripUndefined(match)
+          );
         }
       } else {
         setMatches(initialMatches);
@@ -462,7 +465,10 @@ export default function App() {
     if (tournamentId && db) {
       await updateDoc(doc(db, 'tournaments', tournamentId), { isStarted: true, isFinished: false });
       for (const match of initialMatches) {
-        await setDoc(doc(db, 'tournaments', tournamentId, 'matches', match.id), match);
+        await setDoc(
+          doc(db, 'tournaments', tournamentId, 'matches', match.id),
+          stripUndefined(match)
+        );
       }
     } else {
       setMatches(initialMatches);
@@ -621,7 +627,7 @@ export default function App() {
         }
         updateDoc(doc(db, 'tournaments', tournamentId), updates);
         for (const match of matchesToAdd) {
-          setDoc(doc(db, 'tournaments', tournamentId, 'matches', match.id), match);
+          setDoc(doc(db, 'tournaments', tournamentId, 'matches', match.id), stripUndefined(match));
         }
         for (const team of updatedTeams) {
           if (matchesToAdd.some(m => m.team1Id === team.id || m.team2Id === team.id)) {
@@ -750,8 +756,8 @@ export default function App() {
         };
         
         if (tournamentId && db) {
-          await setDoc(doc(db, 'tournaments', tournamentId, 'matches', matchId), currentMatch);
-          await setDoc(doc(db, 'tournaments', tournamentId, 'matches', nextMatchId), nextMatch);
+          await setDoc(doc(db, 'tournaments', tournamentId, 'matches', matchId), stripUndefined(currentMatch));
+          await setDoc(doc(db, 'tournaments', tournamentId, 'matches', nextMatchId), stripUndefined(nextMatch));
           // Reset wins if team is new or both off
           const t1Wins = nextTeam1Id === winnerId && !reachedMax ? updatedWinnerWins : 0;
           await updateDoc(doc(db, 'tournaments', tournamentId, 'teams', nextTeam1Id), { consecutiveWins: t1Wins });
@@ -778,7 +784,7 @@ export default function App() {
       } else {
         // Net becomes empty
         if (tournamentId && db) {
-          await setDoc(doc(db, 'tournaments', tournamentId, 'matches', matchId), currentMatch);
+          await setDoc(doc(db, 'tournaments', tournamentId, 'matches', matchId), stripUndefined(currentMatch));
           await updateDoc(doc(db, 'tournaments', tournamentId, 'teams', winnerId), { consecutiveWins: reachedMax ? 0 : updatedWinnerWins });
           await updateDoc(doc(db, 'tournaments', tournamentId, 'teams', loserId), { consecutiveWins: 0 });
           await updateDoc(doc(db, 'tournaments', tournamentId), { 
@@ -831,13 +837,13 @@ export default function App() {
     }
 
     if (tournamentId && db) {
-      await setDoc(doc(db, 'tournaments', tournamentId, 'matches', matchId), currentMatch);
+      await setDoc(doc(db, 'tournaments', tournamentId, 'matches', matchId), stripUndefined(currentMatch));
 
       for (const m of matchesWithNets) {
         const originalMatch = matches.find(om => om.id === m.id);
         if (JSON.stringify(m) !== JSON.stringify(originalMatch)) {
           if (m.id !== matchId) {
-            await setDoc(doc(db, 'tournaments', tournamentId, 'matches', m.id), m);
+            await setDoc(doc(db, 'tournaments', tournamentId, 'matches', m.id), stripUndefined(m));
           }
         }
       }

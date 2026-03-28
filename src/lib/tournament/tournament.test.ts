@@ -16,6 +16,7 @@ import { assignNets, assignRoundRobinNets } from './nets';
 import {
   parseBracketMatchIndex,
   propagateWinnerToNext,
+  propagateLoserToBracket,
   autoAdvanceByes,
   BYE_SENTINEL
 } from './advance';
@@ -71,6 +72,7 @@ describe('autoAdvanceByes', () => {
     const r1 = m.filter(x => x.round === 1);
     const withWinner = r1.filter(x => x.winnerId && x.winnerId !== BYE_SENTINEL);
     expect(withWinner.length).toBeGreaterThan(0);
+    expect(r1.some(x => x.byeWalkover && x.winnerId)).toBe(true);
   });
 
   it('does not chain-advance a WR1 bye winner waiting in round 2 for the other feeder', () => {
@@ -227,6 +229,30 @@ describe('generateDoubleElimination', () => {
     const m = generateDoubleElimination(teams4(4));
     expect(m.some(x => x.id === 'gf-1')).toBe(true);
     expect(m.some(x => x.id === 'gf-2')).toBe(true);
+  });
+
+  it('only assigns loserMatchId to existing losers bracket matches (sorted WB order)', () => {
+    const ids = new Set<string>();
+    for (const n of [4, 8, 16]) {
+      const m = generateDoubleElimination(teams4(n));
+      ids.clear();
+      for (const x of m) ids.add(x.id);
+      const wb = m.filter(x => x.bracketType === 'winners' && /^w\d+-\d+$/.test(x.id));
+      for (const x of wb) {
+        if (x.loserMatchId) expect(ids.has(x.loserMatchId)).toBe(true);
+      }
+    }
+  });
+
+  it('drops both WB R1 losers into the same L1 match', () => {
+    const m0 = generateDoubleElimination(teams4(4)).map(x => ({ ...x }));
+    const w10 = m0.find(x => x.id === 'w1-0')!;
+    const w11 = m0.find(x => x.id === 'w1-1')!;
+    propagateLoserToBracket(m0, w10, 'w1-0', 'la');
+    propagateLoserToBracket(m0, w11, 'w1-1', 'lb');
+    const l10 = m0.find(x => x.id === 'l1-0');
+    expect(l10?.team1Id).toBe('la');
+    expect(l10?.team2Id).toBe('lb');
   });
 });
 

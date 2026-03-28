@@ -4,6 +4,7 @@ import { cn } from '../lib/utils';
 import { Trophy, Layout, Clock, Users } from 'lucide-react';
 import { MatchCard } from './MatchCard';
 import { matchIsOnNet, matchIsWaitingForCourt, isWinnersR1ByeSlot } from '../lib/matchSchedule';
+import { matchCountsTowardEliminationRecord } from '../lib/tournament/records';
 
 export interface CourtScheduleViewProps {
   matches: Match[];
@@ -46,17 +47,18 @@ export const CourtScheduleView: React.FC<CourtScheduleViewProps> = ({
 
     const st = teams.map(team => {
       const teamMatches = matches.filter(m => m.team1Id === team.id || m.team2Id === team.id);
-      const wins = teamMatches.filter(m => m.winnerId === team.id).length;
-      const losses = teamMatches.filter(m => m.winnerId && m.winnerId !== team.id).length;
-      const pointsFor = teamMatches.reduce(
+      const recordMs = teamMatches.filter(m => matchCountsTowardEliminationRecord(m));
+      const wins = recordMs.filter(m => m.winnerId === team.id).length;
+      const losses = recordMs.filter(m => m.winnerId && m.winnerId !== team.id).length;
+      const pointsFor = recordMs.reduce(
         (acc, m) => acc + (m.team1Id === team.id ? (m.score1 || 0) : (m.score2 || 0)),
         0
       );
-      const pointsAgainst = teamMatches.reduce(
+      const pointsAgainst = recordMs.reduce(
         (acc, m) => acc + (m.team1Id === team.id ? (m.score2 || 0) : (m.score1 || 0)),
         0
       );
-      return { ...team, wins, losses, diff: pointsFor - pointsAgainst, gp: teamMatches.length };
+      return { ...team, wins, losses, diff: pointsFor - pointsAgainst, gp: recordMs.length };
     });
     const sorted =
       scheduleKind === 'casual'

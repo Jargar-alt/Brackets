@@ -12,5 +12,5 @@ export function matchIsWaitingForCourt(m: Match): boolean {
 
 /** Winners bracket round 1 seed bye: one team, no opponent (display as “Bye”, auto-advances). */
 export function isWinnersR1ByeSlot(m: Pick<Match, 'id' | 'round' | 'team1Id' | 'team2Id'>): boolean {
-  return m.round === 1 && /^w\d/.test(m.id) && Boolean(m.team1Id) && m.team2Id == null;
+  return m.round === 1 && /^w\d+-\d+$/.test(m.id) && Boolean(m.team1Id) && m.team2Id == null;
 }

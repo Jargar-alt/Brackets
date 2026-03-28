@@ -138,10 +138,24 @@ export const MatchCard: React.FC<MatchCardProps> = ({
         </div>
       )}
 
-      {match.winnerId && winnerTeam && (
+      {match.winnerId && (winnerTeam || match.byeWalkover) && (
         <div className="mb-3 rounded-lg border-2 border-emerald-600 bg-emerald-100 px-3 py-2 text-center shadow-sm">
-          <p className="text-[10px] font-extrabold uppercase tracking-wide text-emerald-900">Match winner</p>
-          <p className="mt-0.5 text-base font-bold text-emerald-950">{winnerTeam.name}</p>
+          {match.byeWalkover ? (
+            <>
+              <p className="text-[10px] font-extrabold uppercase tracking-wide text-emerald-900">Advanced</p>
+              <p className="mt-0.5 text-base font-bold text-emerald-950">
+                {teams.find(t => t.id === match.winnerId)?.name ?? 'Team'}
+              </p>
+              <p className="mt-1 text-[9px] font-semibold leading-snug text-emerald-900/85">
+                Seed bye — omitted from standings
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-[10px] font-extrabold uppercase tracking-wide text-emerald-900">Match winner</p>
+              <p className="mt-0.5 text-base font-bold text-emerald-950">{winnerTeam!.name}</p>
+            </>
+          )}
         </div>
       )}
 

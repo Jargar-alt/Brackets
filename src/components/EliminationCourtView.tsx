@@ -37,6 +37,13 @@ export function BracketReferenceStrip({
   const name = (id: string | null | undefined) =>
     id ? teams.find(t => t.id === id)?.name ?? '—' : '—';
 
+  const scoreLine = (m: Match) => {
+    if (m.byeWalkover) return 'Walkover (seed bye)';
+    if (m.sets && m.sets.length > 0) return m.sets.map(s => `${s.team1}-${s.team2}`).join(', ');
+    if (m.score1 != null && m.score2 != null) return `${m.score1}-${m.score2}`;
+    return null;
+  };
+
   return (
     <div className="mt-2">
       <div className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase text-zinc-600">
@@ -57,6 +64,7 @@ export function BracketReferenceStrip({
                 const w = m.winnerId;
                 const t1w = w === m.team1Id;
                 const t2w = w === m.team2Id;
+                const sl = scoreLine(m);
                 return (
                   <div
                     key={m.id}
@@ -84,6 +92,11 @@ export function BracketReferenceStrip({
                     >
                       {m.team2Id ? name(m.team2Id) : isWinnersR1ByeSlot(m) ? 'Bye' : '—'}
                     </div>
+                    {sl && (
+                      <div className="mt-0.5 font-mono text-[8px] font-semibold text-zinc-600">
+                        {sl}
+                      </div>
+                    )}
                     {w && (
                       <div className="mt-1 border-t border-emerald-200 pt-1 text-[9px] font-extrabold uppercase text-emerald-800">
                         W: {name(w)}
