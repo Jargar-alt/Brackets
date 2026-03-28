@@ -11,9 +11,18 @@ interface PoolPlayViewProps {
   onUpdateScore: (matchId: string, sets: SetScore[]) => void;
   isFinished?: boolean;
   rules: TournamentRules;
+  /** When set, standings row is emphasized (e.g. tournament winner). */
+  highlightTeamId?: string | null;
 }
 
-export const PoolPlayView: React.FC<PoolPlayViewProps> = ({ matches, teams, onUpdateScore, isFinished, rules }) => {
+export const PoolPlayView: React.FC<PoolPlayViewProps> = ({
+  matches,
+  teams,
+  onUpdateScore,
+  isFinished,
+  rules,
+  highlightTeamId
+}) => {
   const standings = teams.map(team => {
     const teamMatches = matches.filter(m => m.team1Id === team.id || m.team2Id === team.id);
     const wins = teamMatches.filter(m => m.winnerId === team.id).length;
@@ -29,20 +38,8 @@ export const PoolPlayView: React.FC<PoolPlayViewProps> = ({ matches, teams, onUp
     };
   }).sort((a, b) => b.wins - a.wins || b.diff - a.diff);
 
-  const winner = standings[0];
-
   return (
     <div className="space-y-8">
-      {isFinished && winner && (
-        <div className="w95-panel text-center py-6 w95-row-winner border-2 border-black">
-          <div className="inline-flex p-2 bg-[#000080] text-white mb-3 border-2 border-white outline outline-1 outline-black">
-            <Trophy className="w-8 h-8" />
-          </div>
-          <h2 className="text-lg font-bold text-black">Congratulations {winner.name}!</h2>
-          <p className="text-xs font-bold mt-1">Champion</p>
-        </div>
-      )}
-
       {!isFinished && <NetQueue matches={matches} teams={teams} />}
 
       <div className="w95-panel overflow-x-auto p-0">
@@ -58,8 +55,26 @@ export const PoolPlayView: React.FC<PoolPlayViewProps> = ({ matches, teams, onUp
           </thead>
           <tbody>
             {standings.map((team) => (
-              <tr key={team.id} className="border-t border-[#808080]">
-                <td className="px-3 py-2 font-bold text-sm bg-white">{team.name}</td>
+              <tr
+                key={team.id}
+                className={cn(
+                  'border-t border-zinc-200',
+                  isFinished && highlightTeamId === team.id && 'bg-emerald-50'
+                )}
+              >
+                <td
+                  className={cn(
+                    'px-3 py-2 text-sm font-bold',
+                    isFinished && highlightTeamId === team.id
+                      ? 'bg-emerald-50 text-emerald-950'
+                      : 'bg-white'
+                  )}
+                >
+                  {team.name}
+                  {isFinished && highlightTeamId === team.id && (
+                    <span className="ml-2 text-xs font-semibold text-emerald-800">Winner</span>
+                  )}
+                </td>
                 <td className="px-3 py-2 text-center text-sm bg-white">{team.wins}</td>
                 <td className="px-3 py-2 text-center text-sm bg-white">{team.losses}</td>
                 <td className="px-3 py-2 text-center font-mono text-sm font-bold bg-white">

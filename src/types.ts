@@ -1,7 +1,7 @@
 export type TournamentFormat = 'single' | 'double' | 'pool' | 'play-twice' | 'winners-list';
 
 export interface TournamentRules {
-  pointsToWin: 15 | 21 | 25 | 0; // 0 for traditional
+  pointsToWin: 15 | 21 | 25;
   bestOf: 1 | 3;
   thirdSetTo: 15;
   serveToWin: boolean;

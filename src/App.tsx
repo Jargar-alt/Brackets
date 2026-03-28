@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { TournamentFormat, Team, Match, TournamentRules, SetScore } from './types';
 import {
   generateSingleElimination,
@@ -13,10 +13,11 @@ import {
   propagateLoserToBracket
 } from './lib/tournament/advance';
 import { matchOutcomeFromSets } from './lib/tournament/scoring';
+import { resolveDisplayChampion } from './lib/tournament/champion';
 import { TeamCalculator } from './components/TeamCalculator';
 import { BracketView } from './components/BracketView';
 import { PoolPlayView } from './components/PoolPlayView';
-import { Trophy, Settings, Play, Plus, Trash2, LayoutGrid, GitMerge, Repeat, Users, Share2, LogIn, ShieldCheck, Info, RefreshCw, CheckCircle } from 'lucide-react';
+import { Trophy, Settings, Play, Plus, Trash2, LayoutGrid, GitMerge, Repeat, Users, Share2, LogIn, ShieldCheck, Info, RefreshCw, CheckCircle, Home } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
 import { db, auth } from './firebase';
@@ -33,12 +34,14 @@ import {
   deleteDoc,
   serverTimestamp 
 } from 'firebase/firestore';
-import { 
-  GoogleAuthProvider, 
-  signInWithPopup, 
-  onAuthStateChanged, 
+import {
+  GoogleAuthProvider,
+  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
+  onAuthStateChanged,
   User,
-  signOut 
+  signOut
 } from 'firebase/auth';
 
 import { WinnersListView } from './components/WinnersListView';
@@ -53,6 +56,17 @@ const DEFAULT_RULES: TournamentRules = {
   maxConsecutiveWins: 3,
   onMaxWins: 'other-stays'
 };
+
+const POINTS_OPTIONS = [25, 21, 15] as const;
+
+function sanitizeRules(r: TournamentRules | undefined | null): TournamentRules {
+  const merged: TournamentRules = { ...DEFAULT_RULES, ...(r || {}) };
+  const p = merged.pointsToWin;
+  if (p !== 15 && p !== 21 && p !== 25) {
+    merged.pointsToWin = 25;
+  }
+  return merged;
+}
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -103,7 +117,7 @@ export default function App() {
   });
   const [rules, setRules] = useState<TournamentRules>(() => {
     const saved = localStorage.getItem('tournament_rules');
-    return saved ? JSON.parse(saved) : DEFAULT_RULES;
+    return saved ? sanitizeRules(JSON.parse(saved)) : DEFAULT_RULES;
   });
 
   // Persistence for local mode and tournamentId
@@ -126,8 +140,9 @@ export default function App() {
     localStorage.setItem('tournament_rules', JSON.stringify(rules));
   }, [teams, matches, queue, activeNets, format, isStarted, isFinished, activeTab, numNets, rules, tournamentId]);
 
-  // Auth
+  // Auth + redirect return (mobile / popup-blocked)
   useEffect(() => {
+    getRedirectResult(auth).catch(() => {});
     const unsubscribe = onAuthStateChanged(auth, (u) => {
       setUser(u);
     });
@@ -136,10 +151,30 @@ export default function App() {
 
   const login = async () => {
     const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
+    const coarse =
+      typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
     try {
+      if (coarse) {
+        await signInWithRedirect(auth, provider);
+        return;
+      }
       await signInWithPopup(auth, provider);
-    } catch (error) {
-      console.error("Login failed:", error);
+    } catch (error: unknown) {
+      const code = (error as { code?: string })?.code;
+      if (
+        code === 'auth/popup-blocked' ||
+        code === 'auth/cancelled-popup-request' ||
+        code === 'auth/operation-not-supported-in-this-environment'
+      ) {
+        try {
+          await signInWithRedirect(auth, provider);
+        } catch (e) {
+          console.error('Sign-in redirect failed:', e);
+        }
+        return;
+      }
+      console.error('Login failed:', error);
     }
   };
 
@@ -155,7 +190,7 @@ export default function App() {
         setFormat(data.format);
         setIsStarted(data.isStarted);
         setIsFinished(data.isFinished || false);
-        setRules(data.rules || DEFAULT_RULES);
+        setRules(sanitizeRules(data.rules as TournamentRules | undefined));
         setInviteCode(data.inviteCode);
         setIsCreator(data.creatorId === user?.uid);
         setNumNets(data.numNets || 1);
@@ -270,7 +305,7 @@ export default function App() {
   };
 
   const updateRules = async (newRules: Partial<TournamentRules>) => {
-    const updated = { ...rules, ...newRules };
+    const updated = sanitizeRules({ ...rules, ...newRules });
     setRules(updated);
     if (tournamentId) {
       await updateDoc(doc(db, 'tournaments', tournamentId), { rules: updated });
@@ -756,77 +791,141 @@ export default function App() {
     }
   };
 
-  return (
-    <div className="min-h-screen pb-24 pt-[max(0.5rem,env(safe-area-inset-top))] px-2 sm:px-3">
-      <div className="max-w-7xl mx-auto w95-window flex flex-col min-h-[calc(100dvh-1.25rem)] sticky top-1 z-20">
-        <header className="shrink-0">
-          <div className="w95-titlebar">
-            <div className="flex items-center gap-2 min-w-0">
-              <Trophy className="w-4 h-4 shrink-0 opacity-90" />
-              <span className="truncate text-xs sm:text-sm">Brackets — Tournament Explorer</span>
-            </div>
-          </div>
-          <div className="w95-toolbar flex-wrap justify-end gap-1">
-            {user ? (
-              <div className="flex flex-wrap items-center justify-end gap-1 w-full sm:w-auto">
-                {!tournamentId && !isStarted && (
-                  <>
-                    <input
-                      type="text"
-                      placeholder="Code"
-                      value={joinCode}
-                      onChange={(e) => setJoinCode(e.target.value)}
-                      className="w95-input w-20 sm:w-32 uppercase text-xs py-1 min-h-9"
-                    />
-                    <button type="button" onClick={joinTournament} className="w95-btn flex items-center gap-1 text-xs">
-                      <LogIn className="w-3.5 h-3.5" />
-                      Join
-                    </button>
-                  </>
-                )}
-                {tournamentId && (
-                  <span className="w95-inset px-2 py-1 text-xs font-bold flex items-center gap-1">
-                    <Share2 className="w-3.5 h-3.5" />
-                    {inviteCode}
-                  </span>
-                )}
-                {isStarted && (isCreator || !tournamentId) && (
-                  <>
-                    {!isFinished && (
-                      <button type="button" onClick={finishTournament} className="w95-btn flex items-center gap-1 text-xs">
-                        <CheckCircle className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline">Finish</span>
-                      </button>
-                    )}
-                    <button type="button" onClick={abortTournament} className="w95-btn flex items-center gap-1 text-xs">
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span className="hidden sm:inline">Abort</span>
-                    </button>
-                    <button type="button" onClick={resetTournament} className="w95-btn flex items-center gap-1 text-xs">
-                      <Settings className="w-3.5 h-3.5" />
-                      <span className="hidden sm:inline">Reset</span>
-                    </button>
-                  </>
-                )}
-                <button type="button" onClick={logout} className="w95-btn text-xs">
-                  Sign Out
-                </button>
-              </div>
-            ) : (
-              <div className="flex flex-wrap items-center justify-end gap-1 w-full">
-                <span className="hidden sm:inline w95-inset px-2 py-1 text-xs font-bold">
-                  Local Mode
-                </span>
-                <button type="button" onClick={login} className="w95-btn-default text-xs flex items-center gap-1">
-                  <LogIn className="w-3.5 h-3.5" />
-                  Sign In
-                </button>
-              </div>
-            )}
-          </div>
-        </header>
+  const exitToHome = async () => {
+    if (!isStarted) {
+      setIsStarted(false);
+      return;
+    }
+    if (
+      !window.confirm(
+        'Return to the home screen? Live scores stay saved unless you reset or abort.'
+      )
+    ) {
+      return;
+    }
+    if (tournamentId) {
+      if (!isCreator) {
+        setTournamentId(null);
+        localStorage.removeItem('tournament_id');
+        setIsStarted(false);
+        return;
+      }
+      await updateDoc(doc(db, 'tournaments', tournamentId), { isStarted: false });
+    }
+    setIsStarted(false);
+  };
 
-      <main className="flex-1 overflow-auto bg-[#c0c0c0] px-2 py-3 sm:px-4 sm:py-4">
+  const displayChampion = useMemo(
+    () => (isFinished ? resolveDisplayChampion(format, matches, teams) : null),
+    [isFinished, format, matches, teams]
+  );
+
+  return (
+    <div className="flex min-h-dvh flex-col bg-zinc-100 px-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-[max(0.5rem,env(safe-area-inset-top))] sm:px-3">
+      <div className="mx-auto flex w-full max-w-7xl min-h-0 flex-1 flex-col">
+        <div className="w95-window">
+          <header className="shrink-0">
+            <div className="w95-titlebar">
+              <div className="flex items-center gap-2 min-w-0">
+                <Trophy className="h-4 w-4 shrink-0 opacity-90" />
+                <span className="truncate text-xs sm:text-sm">Brackets</span>
+              </div>
+            </div>
+            <div className="w95-toolbar flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-1">
+                {isStarted && (
+                  <button
+                    type="button"
+                    onClick={() => void exitToHome()}
+                    className="w95-btn flex items-center gap-1 text-xs font-semibold"
+                  >
+                    <Home className="h-3.5 w-3.5" />
+                    Home
+                  </button>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center justify-end gap-1">
+                {user ? (
+                  <>
+                    {!tournamentId && !isStarted && (
+                      <>
+                        <input
+                          type="text"
+                          placeholder="Code"
+                          value={joinCode}
+                          onChange={(e) => setJoinCode(e.target.value)}
+                          className="w95-input min-h-9 w-20 py-1 text-xs uppercase sm:w-32"
+                        />
+                        <button
+                          type="button"
+                          onClick={joinTournament}
+                          className="w95-btn flex items-center gap-1 text-xs"
+                        >
+                          <LogIn className="h-3.5 w-3.5" />
+                          Join
+                        </button>
+                      </>
+                    )}
+                    {tournamentId && (
+                      <span className="w95-inset flex items-center gap-1 px-2 py-1 text-xs font-semibold text-zinc-800">
+                        <Share2 className="h-3.5 w-3.5" />
+                        {inviteCode}
+                      </span>
+                    )}
+                    {isStarted && (isCreator || !tournamentId) && (
+                      <>
+                        {!isFinished && (
+                          <button
+                            type="button"
+                            onClick={finishTournament}
+                            className="w95-btn flex items-center gap-1 text-xs"
+                          >
+                            <CheckCircle className="h-3.5 w-3.5" />
+                            <span className="hidden sm:inline">Finish</span>
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={abortTournament}
+                          className="w95-btn flex items-center gap-1 text-xs"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          <span className="hidden sm:inline">Abort</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={resetTournament}
+                          className="w95-btn flex items-center gap-1 text-xs"
+                        >
+                          <Settings className="h-3.5 w-3.5" />
+                          <span className="hidden sm:inline">Reset</span>
+                        </button>
+                      </>
+                    )}
+                    <button type="button" onClick={logout} className="w95-btn text-xs">
+                      Sign out
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <span className="hidden text-xs font-semibold text-zinc-600 sm:inline">
+                      Local
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => void login()}
+                      className="w95-btn-default flex items-center gap-1 text-xs"
+                    >
+                      <LogIn className="h-3.5 w-3.5" />
+                      Sign in
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          </header>
+
+          <main className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain bg-zinc-50/80 px-2 py-3 sm:px-4 sm:py-4">
         {!isStarted ? (
           <div className="space-y-8">
             {/* Tab Switcher */}
@@ -872,18 +971,19 @@ export default function App() {
                   <div className="space-y-4">
                     <label className="block text-sm font-bold text-zinc-700">Set Format</label>
                     <div className="flex flex-wrap gap-2">
-                      {[25, 21, 15, 0].map((p) => (
+                      {POINTS_OPTIONS.map((p) => (
                         <button
                           key={p}
-                          onClick={() => updateRules({ pointsToWin: p as any })}
+                          type="button"
+                          onClick={() => updateRules({ pointsToWin: p })}
                           className={cn(
-                            "px-4 py-2 rounded-lg text-sm font-bold border transition-all",
-                            rules.pointsToWin === p 
-                              ? "bg-grey-blue text-white border-grey-blue" 
-                              : "bg-white text-zinc-600 border-zinc-200 hover:border-zinc-300"
+                            'rounded-lg border px-4 py-2 text-sm font-semibold transition-all',
+                            rules.pointsToWin === p
+                              ? 'border-slate-700 bg-slate-800 text-white'
+                              : 'border-zinc-200 bg-white text-zinc-700 hover:border-zinc-300'
                           )}
                         >
-                          {p === 0 ? 'Traditional' : `To ${p}`}
+                          First to {p}
                         </button>
                       ))}
                     </div>
@@ -1243,53 +1343,79 @@ export default function App() {
         </div>
       ) : (
           <div id="tournament-view">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+            {isFinished && (
+              <div className="mb-6 rounded-xl border-2 border-emerald-400/80 bg-emerald-50 px-4 py-6 text-center shadow-sm sm:py-8">
+                <p className="text-xs font-semibold uppercase tracking-widest text-emerald-900/80">
+                  Tournament winner
+                </p>
+                {displayChampion ? (
+                  <>
+                    <p className="mt-2 text-3xl font-bold leading-tight text-emerald-950 sm:text-4xl">
+                      {displayChampion.name}
+                    </p>
+                    <p className="mt-2 text-sm font-medium text-emerald-900/90">
+                      First to {rules.pointsToWin}
+                      {rules.bestOf === 3 ? ' · Best of 3' : ' · One set'}
+                      {rules.winByTwo ? ' · Win by 2' : ''}
+                    </p>
+                  </>
+                ) : (
+                  <p className="mt-3 text-lg font-semibold text-emerald-950">
+                    Tournament complete — winner not determined from scores.
+                  </p>
+                )}
+              </div>
+            )}
+
+            <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
               <div>
-                <h1 className="text-lg sm:text-xl font-bold text-black mb-2 border-b-2 border-[#808080] pb-1">Tournament Live</h1>
+                <h1 className="mb-2 border-b border-zinc-200 pb-1 text-lg font-bold text-zinc-900 sm:text-xl">
+                  Tournament live
+                </h1>
                 <div className="flex flex-wrap gap-2">
-                  <div className="w95-inset px-2 py-1.5 flex items-center gap-2 text-xs font-bold">
-                    <Info className="w-4 h-4 shrink-0" />
-                    <span className="text-black">
-                      {rules.pointsToWin === 0 ? 'Traditional' : `To ${rules.pointsToWin}`}
-                      {rules.bestOf === 3 && ' • Best of 3'}
-                      {rules.serveToWin && ' • Serve to Win'}
-                      {rules.winByTwo && ' • Win by 2'}
+                  <div className="w95-inset flex items-center gap-2 px-2 py-1.5 text-xs font-semibold text-zinc-800">
+                    <Info className="h-4 w-4 shrink-0" />
+                    <span>
+                      First to {rules.pointsToWin}
+                      {rules.bestOf === 3 && ' · Best of 3'}
+                      {rules.serveToWin && ' · Serve note'}
+                      {rules.winByTwo && ' · Win by 2'}
                     </span>
                   </div>
                   {tournamentId && (
-                    <div className="px-2 py-1.5 flex items-center gap-2 text-xs font-bold uppercase bg-[#000080] text-white border border-black">
-                      <Share2 className="w-4 h-4" />
+                    <div className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800 px-2 py-1.5 text-xs font-semibold uppercase text-white">
+                      <Share2 className="h-4 w-4" />
                       {inviteCode}
                     </div>
                   )}
                   {isFinished && (
-                    <div className="w95-inset px-2 py-1.5 flex items-center gap-2 text-xs font-bold bg-[#d4e8d4]">
-                      <Trophy className="w-4 h-4" />
-                      Finished
+                    <div className="flex items-center gap-2 rounded-lg border border-emerald-300 bg-emerald-100 px-2 py-1.5 text-xs font-semibold text-emerald-950">
+                      <Trophy className="h-4 w-4" />
+                      Complete
                     </div>
                   )}
                 </div>
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsStarted(false)}
-                  className="w95-btn flex items-center gap-2 text-xs sm:text-sm"
-                >
-                  <Settings className="w-4 h-4" />
-                  Setup
-                </button>
                 {isCreator && !isFinished && (
-                  <button type="button" onClick={endTournament} className="w95-btn-default flex items-center gap-2 text-xs sm:text-sm">
-                    <Trophy className="w-4 h-4" />
-                    End
+                  <button
+                    type="button"
+                    onClick={endTournament}
+                    className="w95-btn-default flex items-center gap-2 text-xs sm:text-sm"
+                  >
+                    <Trophy className="h-4 w-4" />
+                    End tournament
                   </button>
                 )}
                 {isFinished && isCreator && (
-                  <button type="button" onClick={resetToSetup} className="w95-btn-default flex items-center gap-2 text-xs sm:text-sm">
-                    <Plus className="w-4 h-4" />
-                    New
+                  <button
+                    type="button"
+                    onClick={resetToSetup}
+                    className="w95-btn-default flex items-center gap-2 text-xs sm:text-sm"
+                  >
+                    <Plus className="h-4 w-4" />
+                    New tournament
                   </button>
                 )}
               </div>
@@ -1310,18 +1436,32 @@ export default function App() {
                 rules={rules}
               />
             ) : (format === 'pool' || format === 'play-twice') ? (
-              <PoolPlayView matches={matches} teams={teams} onUpdateScore={updateScore} isFinished={isFinished} rules={rules} />
+              <PoolPlayView
+                matches={matches}
+                teams={teams}
+                onUpdateScore={updateScore}
+                isFinished={isFinished}
+                rules={rules}
+                highlightTeamId={isFinished ? displayChampion?.id : undefined}
+              />
             ) : (
               <BracketView matches={matches} teams={teams} onUpdateScore={updateScore} isFinished={isFinished} rules={rules} />
             )}
           </div>
         )}
-      </main>
-        <footer className="w95-statusbar shrink-0">
-          <span>{isStarted ? (isFinished ? 'Tournament finished' : 'Tournament in progress') : 'Ready to set up'}</span>
-          {tournamentId && <span>Cloud sync on</span>}
-          {!tournamentId && <span>Local only</span>}
-        </footer>
+          </main>
+          <footer className="w95-statusbar shrink-0">
+            <span>
+              {isStarted
+                ? isFinished
+                  ? 'Tournament finished'
+                  : 'Tournament in progress'
+                : 'Ready to set up'}
+            </span>
+            {tournamentId && <span>Cloud sync</span>}
+            {!tournamentId && <span>Local only</span>}
+          </footer>
+        </div>
       </div>
     </div>
   );

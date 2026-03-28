@@ -4,9 +4,6 @@ function setCapForIndex(setIndex: number, rules: TournamentRules): number {
   if (rules.bestOf === 3 && setIndex === 2) {
     return rules.thirdSetTo;
   }
-  if (rules.pointsToWin === 0) {
-    return Number.POSITIVE_INFINITY;
-  }
   return rules.pointsToWin;
 }
 
@@ -21,37 +18,21 @@ export function isValidCompletedSet(
   if (s1 === s2) return { ok: false, reason: 'Set cannot end in a tie.' };
 
   const cap = setCapForIndex(setIndex, rules);
-  const hi = Math.max(s1, s2);
-  const lo = Math.min(s1, s2);
   const leaderIs1 = s1 > s2;
 
-  if (Number.isFinite(cap)) {
-    if (rules.winByTwo) {
-      const won =
-        (leaderIs1 && s1 >= cap && s1 - s2 >= 2) || (!leaderIs1 && s2 >= cap && s2 - s1 >= 2);
-      if (!won) {
-        return {
-          ok: false,
-          reason: `Win the set to ${cap} by at least 2 (or extend past ${cap} with a 2-point lead).`
-        };
-      }
-    } else {
-      const won = (leaderIs1 && s1 >= cap) || (!leaderIs1 && s2 >= cap);
-      if (!won) {
-        return { ok: false, reason: `A side must reach ${cap} to win the set.` };
-      }
+  if (rules.winByTwo) {
+    const won =
+      (leaderIs1 && s1 >= cap && s1 - s2 >= 2) || (!leaderIs1 && s2 >= cap && s2 - s1 >= 2);
+    if (!won) {
+      return {
+        ok: false,
+        reason: `Win the set to ${cap} by at least 2 (or extend past ${cap} with a 2-point lead).`
+      };
     }
   } else {
-    // Traditional (no rally cap): win by margin 2 when winByTwo; else use thirdSetTo as soft cap
-    if (rules.winByTwo) {
-      if (hi - lo < 2) {
-        return { ok: false, reason: 'Win by at least 2 points (traditional / no cap).' };
-      }
-    } else {
-      const fallback = rules.thirdSetTo;
-      if (hi < fallback) {
-        return { ok: false, reason: `Reach at least ${fallback} to win (traditional mode without win-by-2).` };
-      }
+    const won = (leaderIs1 && s1 >= cap) || (!leaderIs1 && s2 >= cap);
+    if (!won) {
+      return { ok: false, reason: `A side must reach ${cap} to win the set.` };
     }
   }
 

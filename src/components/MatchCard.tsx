@@ -103,16 +103,14 @@ export const MatchCard: React.FC<MatchCardProps> = ({ match, teams, onUpdateScor
     bestOf === 3
       ? nextSetIndex === 2
         ? `Set 3 (to ${r.thirdSetTo})`
-        : `Set ${nextSetIndex + 1}${r.pointsToWin ? ` (to ${r.pointsToWin})` : ' (traditional)'}`
-      : r.pointsToWin
-        ? `Set (to ${r.pointsToWin})`
-        : 'Set (traditional)';
+        : `Set ${nextSetIndex + 1} (to ${r.pointsToWin})`
+      : `Set (to ${r.pointsToWin})`;
 
   return (
     <div className="match-card w-full">
       {match.netIndex !== undefined && !match.winnerId && (
         <div className="flex justify-end mb-2">
-          <div className="w95-inset text-[10px] font-bold px-2 py-0.5 text-black border border-black">
+          <div className="w95-inset px-2 py-0.5 text-[10px] font-semibold text-zinc-800">
             NET {match.netIndex + 1}
           </div>
         </div>
@@ -136,7 +134,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({ match, teams, onUpdateScor
 
         <div
           className={cn(
-            'flex items-center justify-between p-2 w95-inset min-h-[52px] border border-black',
+            'flex min-h-[52px] items-center justify-between rounded-lg border border-zinc-200 bg-zinc-50/80 p-2',
             match.winnerId === team1?.id && team1 ? 'w95-row-winner' : 'bg-white'
           )}
         >
@@ -154,7 +152,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({ match, teams, onUpdateScor
         </div>
         <div
           className={cn(
-            'flex items-center justify-between p-2 w95-inset min-h-[52px] border border-black',
+            'flex min-h-[52px] items-center justify-between rounded-lg border border-zinc-200 bg-zinc-50/80 p-2',
             match.winnerId === team2?.id && team2 ? 'w95-row-winner' : 'bg-white'
           )}
         >
@@ -179,8 +177,8 @@ export const MatchCard: React.FC<MatchCardProps> = ({ match, teams, onUpdateScor
         )}
 
         {r.winByTwo && !match.winnerId && team1 && team2 && (
-          <div className="text-[9px] font-bold text-black uppercase tracking-wider text-center pt-1">
-            {r.pointsToWin === 0 ? 'Win by 2 (traditional)' : 'Win-by-2 per set'}
+          <div className="text-[9px] font-semibold uppercase tracking-wider text-center text-zinc-600 pt-1">
+            Win by 2 per set
           </div>
         )}
 
