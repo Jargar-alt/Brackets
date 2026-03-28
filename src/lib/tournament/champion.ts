@@ -24,7 +24,7 @@ export function resolveDisplayChampion(
   const byId = (id: string | null | undefined) =>
     id ? teams.find(t => t.id === id) ?? null : null;
 
-  if (format === 'pool' || format === 'play-twice') {
+  if (format === 'pool') {
     let best: Team | null = null;
     let wBest = -1;
     for (const t of teams) {
@@ -35,6 +35,10 @@ export function resolveDisplayChampion(
       }
     }
     return wBest > 0 ? best : null;
+  }
+
+  if (format === 'casual') {
+    return null;
   }
 
   if (format === 'winners-list') {

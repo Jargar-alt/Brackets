@@ -6,7 +6,7 @@
       "type": "object",
       "properties": {
         "name": { "type": "string" },
-        "format": { "type": "string", "enum": ["single", "double", "pool", "play-twice", "winners-list"] },
+        "format": { "type": "string", "enum": ["single", "double", "pool", "casual", "winners-list"] },
         "isStarted": { "type": "boolean" },
         "isFinished": { "type": "boolean" },
         "inviteCode": { "type": "string" },
@@ -23,7 +23,9 @@
             "serveToWin": { "type": "boolean" },
             "winnerStays": { "type": "boolean" },
             "maxConsecutiveWins": { "type": "integer" },
-            "onMaxWins": { "type": "string", "enum": ["other-stays", "both-off"] }
+            "onMaxWins": { "type": "string", "enum": ["other-stays", "both-off"] },
+            "gamesPerTeam": { "type": "integer", "minimum": 1, "maximum": 30 },
+            "poolGroups": { "type": "integer", "minimum": 1, "maximum": 12 }
           }
         }
       },
@@ -36,7 +38,8 @@
       "properties": {
         "name": { "type": "string" },
         "id": { "type": "string" },
-        "consecutiveWins": { "type": "integer" }
+        "consecutiveWins": { "type": "integer" },
+        "group": { "type": "string" }
       },
       "required": ["name", "id"]
     },
@@ -55,7 +58,8 @@
         "loserMatchId": { "type": "string" },
         "round": { "type": "integer" },
         "bracketType": { "type": "string", "enum": ["winners", "losers"] },
-        "netIndex": { "type": "integer" }
+        "netIndex": { "type": "integer" },
+        "poolGroup": { "type": "string" }
       },
       "required": ["id", "round"]
     }

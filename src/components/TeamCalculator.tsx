@@ -7,7 +7,7 @@ interface TeamCalculation {
   totalPlayers: number;
 }
 
-export const TeamCalculator: React.FC = () => {
+export const TeamCalculator: React.FC<{ embedded?: boolean }> = ({ embedded }) => {
   const [playersInput, setPlayersInput] = useState('24');
 
   const playerCount = (() => {
@@ -61,13 +61,13 @@ export const TeamCalculator: React.FC = () => {
   }, [playerCount]);
 
   return (
-    <div className="w95-panel">
-      <div className="w95-list-header -mx-3 -mt-3 sm:-mx-4 sm:-mt-4 mb-3 flex items-center gap-2">
+    <div className={embedded ? 'w95-panel w-full' : 'w95-panel'}>
+      <div className="w95-list-header -mx-3 -mt-3 mb-3 flex items-center gap-2 sm:-mx-4 sm:-mt-4">
         <Users className="w-4 h-4" />
         Team size calculator
       </div>
 
-      <div className="space-y-4">
+      <div className={embedded ? 'space-y-3' : 'space-y-4'}>
         <div>
           <label className="block text-xs font-bold text-black mb-1 uppercase tracking-wide">
             Total players

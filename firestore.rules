@@ -12,29 +12,27 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == get(/databases/$(database)/documents/tournaments/$(tournamentId)).data.creatorId;
     }
 
-    // ===============================================================
-    // Tournament Rules
-    // ===============================================================
+    // Director: create/update only when signed in as creator.
+    // Live results (/live/:id): public read — no sign-in required.
     match /tournaments/{tournamentId} {
-      // Allow read if authenticated (anyone with the link/code can read)
-      allow read: if isAuthenticated();
-      
-      // Allow create if authenticated
-      allow create: if isAuthenticated();
-      
-      // Allow update if creator or if it's a collaborative update (like starting)
-      // For simplicity, we'll allow anyone authenticated to update for now, 
-      // but in a real app we'd restrict sensitive fields to creator.
-      allow update: if isAuthenticated();
+      allow read: if true;
+
+      allow create: if isAuthenticated()
+        && request.resource.data.creatorId == request.auth.uid;
+
+      allow update, delete: if isAuthenticated()
+        && resource.data.creatorId == request.auth.uid;
 
       match /teams/{teamId} {
-        allow read: if isAuthenticated();
-        allow write: if isAuthenticated();
+        allow read: if true;
+        allow create, update, delete: if isAuthenticated()
+          && get(/databases/$(database)/documents/tournaments/$(tournamentId)).data.creatorId == request.auth.uid;
       }
 
       match /matches/{matchId} {
-        allow read: if isAuthenticated();
-        allow write: if isAuthenticated();
+        allow read: if true;
+        allow create, update, delete: if isAuthenticated()
+          && get(/databases/$(database)/documents/tournaments/$(tournamentId)).data.creatorId == request.auth.uid;
       }
     }
   }

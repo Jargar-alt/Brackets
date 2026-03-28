@@ -3,10 +3,16 @@ import { TournamentFormat, Team, Match, TournamentRules, SetScore } from './type
 import {
   generateSingleElimination,
   generateDoubleElimination,
-  generatePoolPlay,
-  generatePlayTwice
+  generateRoundRobin,
+  generateGroupStagePool,
+  assignPoolGroupsInOrder,
+  stripTeamGroups,
+  generateCasualFirstRound,
+  buildNextCasualRound,
+  casualMaxRound,
+  casualRoundIsComplete
 } from './lib/tournament/generate';
-import { assignNets, assignPlayTwiceNets } from './lib/tournament/nets';
+import { assignNets, assignRoundRobinNets } from './lib/tournament/nets';
 import {
   autoAdvanceByes,
   propagateWinnerToNext,
@@ -15,10 +21,9 @@ import {
 import { matchOutcomeFromSets } from './lib/tournament/scoring';
 import { resolveDisplayChampion } from './lib/tournament/champion';
 import { TeamCalculator } from './components/TeamCalculator';
-import { BracketView } from './components/BracketView';
-import { PoolPlayView } from './components/PoolPlayView';
-import { PlayTwiceView } from './components/PlayTwiceView';
-import { Trophy, Play, Plus, Trash2, LayoutGrid, GitMerge, Repeat, Users, Share2, LogIn, ShieldCheck, Info, RefreshCw, CheckCircle, Home } from 'lucide-react';
+import { CourtScheduleView } from './components/CourtScheduleView';
+import { EliminationCourtView } from './components/EliminationCourtView';
+import { Trophy, Play, Plus, Trash2, LayoutGrid, GitMerge, Users, Share2, LogIn, ShieldCheck, Info, RefreshCw, CheckCircle, Home, ExternalLink, Copy } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
 import { db, auth, isFirebaseConfigured } from './firebase';
@@ -31,19 +36,12 @@ import {
   query, 
   where, 
   getDocs,
-  addDoc,
   deleteDoc,
   serverTimestamp 
 } from 'firebase/firestore';
-import {
-  GoogleAuthProvider,
-  signInWithPopup,
-  signInWithRedirect,
-  onAuthStateChanged,
-  User,
-  signOut
-} from 'firebase/auth';
+import { onAuthStateChanged, User, signOut } from 'firebase/auth';
 import { consumeAuthRedirectError } from './authBootstrap';
+import { signInWithGoogle } from './lib/googleSignIn';
 
 import { WinnersListView } from './components/WinnersListView';
 
@@ -53,6 +51,8 @@ const DEFAULT_RULES: TournamentRules = {
   thirdSetTo: 15,
   serveToWin: false,
   winByTwo: true,
+  gamesPerTeam: 2,
+  poolGroups: 1,
   winnerStays: true,
   maxConsecutiveWins: 3,
   onMaxWins: 'other-stays'
@@ -61,11 +61,25 @@ const DEFAULT_RULES: TournamentRules = {
 const POINTS_OPTIONS = [25, 21, 15] as const;
 
 function sanitizeRules(r: TournamentRules | undefined | null): TournamentRules {
-  const merged: TournamentRules = { ...DEFAULT_RULES, ...(r || {}) };
+  const raw = { ...(r || {}) } as Partial<TournamentRules> & { playEachTimes?: unknown };
+  delete raw.playEachTimes;
+  const merged: TournamentRules = { ...DEFAULT_RULES, ...raw };
   const p = merged.pointsToWin;
   if (p !== 15 && p !== 21 && p !== 25) {
     merged.pointsToWin = 25;
   }
+  let gpt = merged.gamesPerTeam ?? DEFAULT_RULES.gamesPerTeam ?? 2;
+  if (typeof gpt !== 'number' || !Number.isFinite(gpt)) gpt = 2;
+  gpt = Math.floor(gpt);
+  if (gpt < 1) gpt = 1;
+  if (gpt > 30) gpt = 30;
+  merged.gamesPerTeam = gpt;
+  let pg = merged.poolGroups ?? 1;
+  if (typeof pg !== 'number' || !Number.isFinite(pg)) pg = 1;
+  pg = Math.floor(pg);
+  if (pg < 1) pg = 1;
+  if (pg > 12) pg = 12;
+  merged.poolGroups = pg;
   return merged;
 }
 
@@ -87,7 +101,16 @@ export default function App() {
   });
   const [format, setFormat] = useState<TournamentFormat>(() => {
     const saved = localStorage.getItem('tournament_format');
-    return (saved as TournamentFormat) || 'single';
+    if (saved === 'play-twice') {
+      localStorage.setItem('tournament_format', 'pool');
+      localStorage.setItem('_migrated_play_twice', '1');
+      return 'pool';
+    }
+    const allowed: TournamentFormat[] = ['single', 'double', 'pool', 'casual', 'winners-list'];
+    if (saved && allowed.includes(saved as TournamentFormat)) {
+      return saved as TournamentFormat;
+    }
+    return 'single';
   });
   const [matches, setMatches] = useState<Match[]>(() => {
     const saved = localStorage.getItem('tournament_matches');
@@ -148,6 +171,13 @@ export default function App() {
   }, [tournamentId, isFirebaseConfigured]);
 
   useEffect(() => {
+    if (localStorage.getItem('_migrated_play_twice') !== '1') return;
+    localStorage.removeItem('_migrated_play_twice');
+    setFormat('casual');
+    setRules(prev => sanitizeRules({ ...prev, gamesPerTeam: Math.max(prev.gamesPerTeam ?? 2, 2) }));
+  }, []);
+
+  useEffect(() => {
     const msg = consumeAuthRedirectError();
     if (msg) window.alert(msg);
   }, []);
@@ -167,36 +197,9 @@ export default function App() {
       );
       return;
     }
-    const provider = new GoogleAuthProvider();
-    provider.setCustomParameters({ prompt: 'select_account' });
-    const coarse =
-      typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
-    const useRedirect =
-      import.meta.env.PROD ||
-      coarse ||
-      (typeof window !== 'undefined' &&
-        /iPhone|iPad|iPod|Android/i.test(navigator.userAgent));
-    try {
-      if (useRedirect) {
-        await signInWithRedirect(auth, provider);
-        return;
-      }
-      await signInWithPopup(auth, provider);
-    } catch (error: unknown) {
-      const code = (error as { code?: string })?.code;
-      if (
-        code === 'auth/popup-blocked' ||
-        code === 'auth/cancelled-popup-request' ||
-        code === 'auth/operation-not-supported-in-this-environment'
-      ) {
-        try {
-          await signInWithRedirect(auth, provider);
-        } catch (e) {
-          console.error('Sign-in redirect failed:', e);
-        }
-        return;
-      }
-      console.error('Login failed:', error);
+    const r = await signInWithGoogle(auth);
+    if (r.ok === false && r.message) {
+      window.alert(r.message);
     }
   };
 
@@ -211,7 +214,12 @@ export default function App() {
     const unsubTournament = onSnapshot(doc(db, 'tournaments', tournamentId), (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.data();
-        setFormat(data.format);
+        const allowedFmt: TournamentFormat[] = ['single', 'double', 'pool', 'casual', 'winners-list'];
+        setFormat(
+          allowedFmt.includes(data.format as TournamentFormat)
+            ? (data.format as TournamentFormat)
+            : 'single'
+        );
         setIsStarted(data.isStarted);
         setIsFinished(data.isFinished || false);
         setRules(sanitizeRules(data.rules as TournamentRules | undefined));
@@ -277,10 +285,19 @@ export default function App() {
     }
     const q = query(collection(db, 'tournaments'), where('inviteCode', '==', joinCode.toUpperCase()));
     const snapshot = await getDocs(q);
-    if (!snapshot.empty) {
-      setTournamentId(snapshot.docs[0].id);
-    } else {
+    if (snapshot.empty) {
       alert('Invalid invite code');
+      return;
+    }
+    const d = snapshot.docs[0]!;
+    const data = d.data();
+    const id = d.id;
+    if (user?.uid && data.creatorId === user.uid) {
+      setTournamentId(id);
+      setInviteCode(data.inviteCode || '');
+    } else {
+      const url = `${window.location.origin}/live/${id}`;
+      window.open(url, '_blank', 'noopener,noreferrer');
     }
   };
 
@@ -346,17 +363,37 @@ export default function App() {
     if (format === 'single') {
       initialMatches = generateSingleElimination(teams);
       initialMatches = autoAdvanceByes(initialMatches);
-      initialMatches = assignNets(initialMatches, numNets);
+      initialMatches = assignNets(initialMatches, numNets, 'single');
     } else if (format === 'double') {
       initialMatches = generateDoubleElimination(teams);
       initialMatches = autoAdvanceByes(initialMatches);
-      initialMatches = assignNets(initialMatches, numNets);
+      initialMatches = assignNets(initialMatches, numNets, 'double');
     } else if (format === 'pool') {
-      initialMatches = generatePoolPlay(teams);
-      initialMatches = assignNets(initialMatches, numNets);
-    } else if (format === 'play-twice') {
-      initialMatches = generatePlayTwice(teams);
-      initialMatches = assignPlayTwiceNets(initialMatches, numNets);
+      const ng = Math.min(12, Math.max(1, rules.poolGroups ?? 1));
+      let poolTeams = teams;
+      if (ng > 1) {
+        poolTeams = assignPoolGroupsInOrder(teams, ng);
+        setTeams(poolTeams);
+        if (tournamentId && db) {
+          for (const t of poolTeams) {
+            await setDoc(doc(db, 'tournaments', tournamentId, 'teams', t.id), t);
+          }
+        }
+      } else {
+        poolTeams = stripTeamGroups(teams);
+        setTeams(poolTeams);
+        if (tournamentId && db) {
+          for (const t of poolTeams) {
+            await setDoc(doc(db, 'tournaments', tournamentId, 'teams', t.id), t);
+          }
+        }
+      }
+      initialMatches = generateGroupStagePool(poolTeams);
+      initialMatches = assignRoundRobinNets(initialMatches, numNets);
+    } else if (format === 'casual') {
+      initialMatches = generateCasualFirstRound(teams);
+      initialMatches = autoAdvanceByes(initialMatches);
+      initialMatches = assignRoundRobinNets(initialMatches, numNets);
     } else if (format === 'winners-list') {
       let currentTeams = teams;
       if (teams.length === 0 && preSignupCount > 0) {
@@ -647,6 +684,23 @@ export default function App() {
 
     updatedMatches[matchIdx] = currentMatch;
 
+    let workingMatches = updatedMatches;
+    if (format === 'casual' && winnerId) {
+      const g = Math.max(1, Math.min(30, Math.floor(rules.gamesPerTeam ?? 2) || 2));
+      const maxR = casualMaxRound(workingMatches);
+      if (
+        maxR >= 1 &&
+        casualRoundIsComplete(workingMatches, maxR) &&
+        maxR < g
+      ) {
+        const extra = buildNextCasualRound(teams, workingMatches, maxR + 1);
+        if (extra.length > 0) {
+          workingMatches = [...workingMatches, ...extra];
+          workingMatches = autoAdvanceByes(workingMatches);
+        }
+      }
+    }
+
     if (format === 'winners-list' && winnerId && loserId) {
       const netIndex = currentMatch.netIndex!;
       const winnerTeam = teams.find(t => t.id === winnerId);
@@ -746,9 +800,9 @@ export default function App() {
     }
 
     let tournamentComplete = false;
-    if (winnerId && format !== 'winners-list') {
+    if (winnerId && format !== 'winners-list' && format !== 'pool' && format !== 'casual') {
       tournamentComplete = propagateWinnerToNext(
-        updatedMatches,
+        workingMatches,
         currentMatch,
         matchId,
         winnerId
@@ -756,13 +810,21 @@ export default function App() {
     }
 
     if (currentMatch.loserMatchId && loserId) {
-      propagateLoserToBracket(updatedMatches, currentMatch, matchId, loserId);
+      propagateLoserToBracket(workingMatches, currentMatch, matchId, loserId);
     }
 
     const matchesWithNets =
-      format === 'play-twice'
-        ? assignPlayTwiceNets(updatedMatches, numNets)
-        : assignNets(updatedMatches, numNets);
+      format === 'pool' || format === 'casual'
+        ? assignRoundRobinNets(workingMatches, numNets)
+        : assignNets(workingMatches, numNets, format);
+
+    if (
+      (format === 'pool' || format === 'casual') &&
+      matchesWithNets.length > 0 &&
+      matchesWithNets.every(m => m.winnerId)
+    ) {
+      tournamentComplete = true;
+    }
 
     if (tournamentId && db) {
       await setDoc(doc(db, 'tournaments', tournamentId, 'matches', matchId), currentMatch);
@@ -891,9 +953,10 @@ export default function App() {
                           type="button"
                           onClick={() => void joinTournament()}
                           className="w95-btn flex items-center gap-1 text-xs"
+                          title="If you created this tournament, loads director view. Otherwise opens the public live board."
                         >
                           <LogIn className="h-3.5 w-3.5" />
-                          Join
+                          Code
                         </button>
                       </>
                     )}
@@ -1079,27 +1142,36 @@ export default function App() {
                       </div>
                     </button>
 
-                    <button
-                      onClick={() => updateRules({ serveToWin: !rules.serveToWin })}
-                      className="flex items-center gap-3 group"
-                    >
-                      <div className={cn(
-                        "w-12 h-6 rounded-full transition-all relative",
-                        rules.serveToWin ? "bg-emerald-600 shadow-inner ring-1 ring-emerald-800/30" : "bg-zinc-300"
-                      )}>
-                        <div className={cn(
-                          "absolute top-1 w-4 h-4 bg-white rounded-full transition-all",
-                          rules.serveToWin ? "left-7" : "left-1"
-                        )} />
+                    <div className="sm:col-span-2 flex flex-col gap-2 border-t border-zinc-100 pt-4 sm:flex-row sm:flex-wrap sm:items-center">
+                      <span className="text-xs font-semibold text-zinc-700">Serve to win</span>
+                      <span className="hidden text-xs text-zinc-500 sm:inline">— honor on court; you still enter final scores.</span>
+                      <div className="flex gap-0.5 rounded-md border border-zinc-200 bg-zinc-50/80 p-0.5">
+                        <button
+                          type="button"
+                          onClick={() => updateRules({ serveToWin: true })}
+                          className={cn(
+                            'rounded px-2.5 py-1 text-[11px] font-bold transition-colors',
+                            rules.serveToWin
+                              ? 'bg-slate-800 text-white'
+                              : 'text-zinc-600 hover:bg-white'
+                          )}
+                        >
+                          On
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => updateRules({ serveToWin: false })}
+                          className={cn(
+                            'rounded px-2.5 py-1 text-[11px] font-bold transition-colors',
+                            !rules.serveToWin
+                              ? 'bg-slate-800 text-white'
+                              : 'text-zinc-600 hover:bg-white'
+                          )}
+                        >
+                          Off
+                        </button>
                       </div>
-                      <div className="text-left">
-                        <div className="text-sm font-bold text-zinc-700">Serve to Win</div>
-                        <div className="text-xs text-zinc-500">
-                          Shows a clear rule on score cards: game point on serve. Teams play by it; you enter
-                          final scores only.
-                        </div>
-                      </div>
-                    </button>
+                    </div>
 
                     {format === 'winners-list' && (
                       <>
@@ -1194,6 +1266,58 @@ export default function App() {
                         </div>
                       </div>
                     </div>
+
+                    {format === 'pool' && activeTab === 'tournaments' && (
+                      <div className="sm:col-span-2 space-y-3 rounded-xl border-2 border-emerald-200 bg-emerald-50/50 p-4">
+                        <label className="block text-sm font-bold text-emerald-950">Groups (World Cup style)</label>
+                        <p className="text-xs leading-relaxed text-emerald-900/90">
+                          1 = one full pool. 2+ splits teams A, B, C… in list order; each group has its own round
+                          robin. Nets fill group A before B, and so on.
+                        </p>
+                        <div className="flex items-center gap-6">
+                          <input
+                            type="range"
+                            min="1"
+                            max="12"
+                            value={rules.poolGroups ?? 1}
+                            onChange={e =>
+                              updateRules({ poolGroups: parseInt(e.target.value, 10) })
+                            }
+                            className="h-2 flex-1 cursor-pointer appearance-none rounded-lg bg-zinc-100 accent-emerald-700"
+                          />
+                          <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-emerald-600/40 bg-white text-lg font-bold text-emerald-950">
+                            {rules.poolGroups ?? 1}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {format === 'casual' && activeTab === 'tournaments' && (
+                      <div className="sm:col-span-2 space-y-3 rounded-xl border-2 border-sky-200 bg-sky-50/60 p-4">
+                        <label className="block text-sm font-bold text-sky-950">
+                          Rounds (games per team)
+                        </label>
+                        <p className="text-xs leading-relaxed text-sky-900/90">
+                          Everyone plays wave 1 first; the next wave unlocks after that round is fully done. Later
+                          waves pair stronger records together when possible — low pressure, just for fun flow.
+                        </p>
+                        <div className="flex items-center gap-6">
+                          <input
+                            type="range"
+                            min="1"
+                            max="30"
+                            value={rules.gamesPerTeam ?? 2}
+                            onChange={e =>
+                              updateRules({ gamesPerTeam: parseInt(e.target.value, 10) })
+                            }
+                            className="h-2 flex-1 cursor-pointer appearance-none rounded-lg bg-zinc-100 accent-sky-700"
+                          />
+                          <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-sky-600/40 bg-white text-lg font-bold text-sky-950">
+                            {rules.gamesPerTeam ?? 2}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {format === 'winners-list' && (
@@ -1223,40 +1347,42 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="bg-white p-6 rounded-xl border border-zinc-200 shadow-sm">
-                <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-lg font-semibold flex items-center gap-2">
-                    <Users className="w-5 h-5 text-slate-700" />
-                    Teams ({teams.length})
-                  </h2>
-                  <div className="flex gap-2">
-                    {activeTab === 'winners-list' && (
-                      <button
-                        onClick={() => {
-                          const newTeams = Array.from({ length: preSignupCount }).map((_, i) => ({
-                            id: `team-${Date.now()}-${i}`,
-                            name: `Team ${teams.length + i + 1}`,
-                            consecutiveWins: 0
-                          }));
-                          setTeams([...teams, ...newTeams]);
-                        }}
-                        className="bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-950 rounded-lg transition-colors hover:bg-emerald-100 flex items-center gap-2"
-                      >
-                        <Plus className="w-4 h-4" />
-                        Quick Add {preSignupCount}
-                      </button>
-                    )}
-                    <button
-                      onClick={() => addTeam()}
-                      className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-900 flex items-center gap-2"
-                    >
-                      <Plus className="w-4 h-4" />
-                      Add Team
-                    </button>
-                  </div>
-                </div>
+              <div className="rounded-xl border border-zinc-200 bg-white p-6 shadow-sm">
+                <div className="mb-6 flex flex-col gap-6 xl:flex-row xl:items-start">
+                  <div className="min-w-0 flex-1">
+                    <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <h2 className="flex items-center gap-2 text-lg font-semibold">
+                        <Users className="h-5 w-5 text-slate-700" />
+                        Teams ({teams.length})
+                      </h2>
+                      <div className="flex flex-wrap gap-2">
+                        {activeTab === 'winners-list' && (
+                          <button
+                            onClick={() => {
+                              const newTeams = Array.from({ length: preSignupCount }).map((_, i) => ({
+                                id: `team-${Date.now()}-${i}`,
+                                name: `Team ${teams.length + i + 1}`,
+                                consecutiveWins: 0
+                              }));
+                              setTeams([...teams, ...newTeams]);
+                            }}
+                            className="flex items-center gap-2 rounded-lg bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-950 transition-colors hover:bg-emerald-100"
+                          >
+                            <Plus className="h-4 w-4" />
+                            Quick Add {preSignupCount}
+                          </button>
+                        )}
+                        <button
+                          onClick={() => addTeam()}
+                          className="flex items-center gap-2 rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-900"
+                        >
+                          <Plus className="h-4 w-4" />
+                          Add Team
+                        </button>
+                      </div>
+                    </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <AnimatePresence mode="popLayout">
                     {teams.map((team, index) => (
                       <motion.div
@@ -1267,8 +1393,13 @@ export default function App() {
                         exit={{ opacity: 0, scale: 0.9 }}
                         className="flex items-center gap-3 p-4 bg-zinc-50 rounded-xl border border-zinc-200 group active:bg-zinc-100 transition-colors"
                       >
-                        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-white border border-zinc-200 text-xs font-bold text-zinc-500 shadow-sm">
-                          {index + 1}
+                        <div className="flex flex-col items-center justify-center gap-0.5">
+                          <div className="flex h-8 w-8 items-center justify-center rounded-full border border-zinc-200 bg-white text-xs font-bold text-zinc-500 shadow-sm">
+                            {index + 1}
+                          </div>
+                          {format === 'pool' && team.group && (
+                            <span className="text-[9px] font-extrabold text-emerald-800">Grp {team.group}</span>
+                          )}
                         </div>
                         <input
                           type="text"
@@ -1288,6 +1419,13 @@ export default function App() {
                     ))}
                   </AnimatePresence>
                 </div>
+                  </div>
+                  {activeTab === 'tournaments' && (
+                    <div className="w-full shrink-0 xl:w-80">
+                      <TeamCalculator embedded />
+                    </div>
+                  )}
+                </div>
               </div>
 
               {activeTab === 'tournaments' && (
@@ -1296,12 +1434,22 @@ export default function App() {
                     <LayoutGrid className="w-5 h-5 text-slate-700" />
                     Tournament Style
                   </h2>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     {[
                       { id: 'single', name: 'Single Elimination', icon: GitMerge, desc: 'Win or go home.' },
                       { id: 'double', name: 'Double Elimination', icon: GitMerge, desc: 'Two losses to be out.' },
-                      { id: 'pool', name: 'Pool Play', icon: LayoutGrid, desc: 'Round robin style.' },
-                      { id: 'play-twice', name: 'Play Twice', icon: Repeat, desc: 'Everyone gets 2 games.' },
+                      {
+                        id: 'pool',
+                        name: 'Round robin',
+                        icon: LayoutGrid,
+                        desc: 'FIFA-style groups optional: round robin inside each group, then standings.'
+                      },
+                      {
+                        id: 'casual',
+                        name: 'Casual games',
+                        icon: Users,
+                        desc: 'X waves: finish a round before the next. Pairings nudge winners together — no official winner.'
+                      }
                     ].map((style) => (
                       <button
                         key={style.id}
@@ -1373,8 +1521,57 @@ export default function App() {
                 </div>
               )}
 
-              {activeTab === 'tournaments' && <TeamCalculator />}
-              
+              {tournamentId && isFirebaseConfigured && isCreator && (
+                <div className="rounded-xl border border-sky-200 bg-sky-50/80 p-5 shadow-sm">
+                  <h3 className="mb-2 flex items-center gap-2 text-sm font-bold text-sky-950">
+                    <ExternalLink className="h-4 w-4" />
+                    Public live results
+                  </h3>
+                  <p className="mb-3 text-xs leading-relaxed text-sky-900/90">
+                    Share this link with players and fans. No Google sign-in — read-only courts, queue, bracket,
+                    and scores.
+                  </p>
+                  <div className="mb-2 break-all rounded border border-sky-300/60 bg-white px-2 py-1.5 font-mono text-[11px] text-sky-950">
+                    {typeof window !== 'undefined'
+                      ? `${window.location.origin}/live/${tournamentId}`
+                      : `/live/${tournamentId}`}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <a
+                      href={`/live/${tournamentId}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 rounded-lg bg-sky-800 px-3 py-2 text-xs font-bold text-white hover:bg-sky-900"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      Open live
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const u =
+                          typeof window !== 'undefined'
+                            ? `${window.location.origin}/live/${tournamentId}`
+                            : '';
+                        void navigator.clipboard.writeText(u).then(() => {});
+                      }}
+                      className="inline-flex items-center gap-1 rounded-lg border border-sky-600 bg-white px-3 py-2 text-xs font-bold text-sky-950 hover:bg-sky-100"
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                      Copy link
+                    </button>
+                  </div>
+                  {inviteCode && (
+                    <p className="mt-3 text-[10px] font-semibold text-sky-900/80">
+                      Short URL on your host:{' '}
+                      <span className="font-mono">
+                        {typeof window !== 'undefined' ? window.location.origin : ''}/live?code={inviteCode}
+                      </span>
+                    </p>
+                  )}
+                </div>
+              )}
+
               {matches.length > 0 ? (
                 <div className="flex flex-col gap-3">
                   <button
@@ -1426,25 +1623,38 @@ export default function App() {
           <div id="tournament-view">
             {isFinished && (
               <div className="mb-6 rounded-xl border-2 border-emerald-400/80 bg-emerald-50 px-4 py-6 text-center shadow-sm sm:py-8">
-                <p className="text-xs font-semibold uppercase tracking-widest text-emerald-900/80">
-                  Tournament winner
-                </p>
-                {displayChampion ? (
+                {format === 'casual' ? (
                   <>
-                    <p className="mt-2 text-3xl font-bold leading-tight text-emerald-950 sm:text-4xl">
-                      {displayChampion.name}
+                    <p className="text-xs font-semibold uppercase tracking-widest text-emerald-900/80">
+                      Session complete
                     </p>
-                    <p className="mt-2 text-sm font-medium text-emerald-900/90">
-                      First to {rules.pointsToWin}
-                      {rules.bestOf === 3 ? ' · Best of 3' : ' · One set'}
-                      {rules.winByTwo ? ' · Win by 2' : ''}
-                      {rules.serveToWin ? ' · Serve to win (game point on serve)' : ''}
+                    <p className="mt-3 text-lg font-semibold text-emerald-950">
+                      All scheduled games are done. This format does not name a tournament winner.
                     </p>
                   </>
                 ) : (
-                  <p className="mt-3 text-lg font-semibold text-emerald-950">
-                    Tournament complete — winner not determined from scores.
-                  </p>
+                  <>
+                    <p className="text-xs font-semibold uppercase tracking-widest text-emerald-900/80">
+                      Tournament winner
+                    </p>
+                    {displayChampion ? (
+                      <>
+                        <p className="mt-2 text-3xl font-bold leading-tight text-emerald-950 sm:text-4xl">
+                          {displayChampion.name}
+                        </p>
+                        <p className="mt-2 text-sm font-medium text-emerald-900/90">
+                          First to {rules.pointsToWin}
+                          {rules.bestOf === 3 ? ' · Best of 3' : ' · One set'}
+                          {rules.winByTwo ? ' · Win by 2' : ''}
+                          {rules.serveToWin ? ' · Serve to win (game point on serve)' : ''}
+                        </p>
+                      </>
+                    ) : (
+                      <p className="mt-3 text-lg font-semibold text-emerald-950">
+                        Tournament complete — winner not determined from scores.
+                      </p>
+                    )}
+                  </>
                 )}
               </div>
             )}
@@ -1464,12 +1674,9 @@ export default function App() {
                     </span>
                   </div>
                   {rules.serveToWin && (
-                    <div className="flex max-w-full items-center gap-2 rounded-lg border-2 border-amber-400 bg-amber-50 px-2 py-1.5 text-xs font-bold text-amber-950">
-                      <Info className="h-4 w-4 shrink-0 text-amber-800" />
-                      <span className="leading-snug">
-                        Serve to win: game-winning point must be on serve (honor on court — you record final
-                        scores).
-                      </span>
+                    <div className="flex max-w-full items-center gap-1.5 rounded border border-amber-300/80 bg-amber-50/90 px-2 py-1 text-[11px] font-medium text-amber-950">
+                      <Info className="h-3.5 w-3.5 shrink-0 text-amber-800 opacity-80" />
+                      <span className="leading-snug">Serve to win on</span>
                     </div>
                   )}
                   {tournamentId && (
@@ -1525,8 +1732,9 @@ export default function App() {
                 isFinished={isFinished}
                 rules={rules}
               />
-            ) : format === 'play-twice' ? (
-              <PlayTwiceView
+            ) : format === 'pool' ? (
+              <CourtScheduleView
+                scheduleKind="round-robin"
                 matches={matches}
                 teams={teams}
                 numNets={numNets}
@@ -1535,17 +1743,40 @@ export default function App() {
                 rules={rules}
                 highlightTeamId={isFinished ? displayChampion?.id : undefined}
               />
-            ) : format === 'pool' ? (
-              <PoolPlayView
+            ) : format === 'casual' ? (
+              <CourtScheduleView
+                scheduleKind="casual"
+                targetGamesPerTeam={rules.gamesPerTeam ?? 2}
+                queueHelpText="Finish the current wave on the nets before the next wave fills. Later pairings loosely group winners together — optional fun, not a strict bracket."
                 matches={matches}
                 teams={teams}
+                numNets={numNets}
+                onUpdateScore={updateScore}
+                isFinished={isFinished}
+                rules={rules}
+              />
+            ) : format === 'single' ? (
+              <EliminationCourtView
+                variant="single"
+                matches={matches}
+                teams={teams}
+                numNets={numNets}
                 onUpdateScore={updateScore}
                 isFinished={isFinished}
                 rules={rules}
                 highlightTeamId={isFinished ? displayChampion?.id : undefined}
               />
             ) : (
-              <BracketView matches={matches} teams={teams} onUpdateScore={updateScore} isFinished={isFinished} rules={rules} />
+              <EliminationCourtView
+                variant="double"
+                matches={matches}
+                teams={teams}
+                numNets={numNets}
+                onUpdateScore={updateScore}
+                isFinished={isFinished}
+                rules={rules}
+                highlightTeamId={isFinished ? displayChampion?.id : undefined}
+              />
             )}
           </div>
         )}

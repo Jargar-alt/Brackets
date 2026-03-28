@@ -125,6 +125,8 @@ export const MatchCard: React.FC<MatchCardProps> = ({
 
   const showServeRuleCallout = Boolean(r.serveToWin && team1 && team2 && !match.winnerId);
 
+  const winnerTeam = match.winnerId ? teams.find(t => t.id === match.winnerId) : null;
+
   return (
     <div className="match-card w-full">
       {showNetBadge && match.netIndex !== undefined && !match.winnerId && (
@@ -135,19 +137,20 @@ export const MatchCard: React.FC<MatchCardProps> = ({
         </div>
       )}
 
+      {match.winnerId && winnerTeam && (
+        <div className="mb-3 rounded-lg border-2 border-emerald-600 bg-emerald-100 px-3 py-2 text-center shadow-sm">
+          <p className="text-[10px] font-extrabold uppercase tracking-wide text-emerald-900">Match winner</p>
+          <p className="mt-0.5 text-base font-bold text-emerald-950">{winnerTeam.name}</p>
+        </div>
+      )}
+
       {showServeRuleCallout && (
-        <div
-          className="mb-3 rounded-lg border-2 border-amber-400 bg-amber-50 px-3 py-2 text-center shadow-sm"
+        <p
+          className="mb-2 rounded border border-amber-300/70 bg-amber-50/90 px-2 py-1.5 text-center text-[10px] font-medium leading-snug text-amber-950/95"
           role="status"
         >
-          <p className="text-[10px] font-extrabold uppercase tracking-wide text-amber-950">
-            Director rule · Serve to win
-          </p>
-          <p className="mt-1 text-[11px] font-semibold leading-snug text-amber-950/90">
-            Rally scoring on the court — the <span className="underline">game-winning point</span> must be
-            scored on serve. Enter the final set scores below when the match is done.
-          </p>
-        </div>
+          Serve to win: last point of the game on serve — enter final scores when done.
+        </p>
       )}
 
       {bestOf === 3 && completedSets.length > 0 && !match.winnerId && (

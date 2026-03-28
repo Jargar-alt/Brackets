@@ -4,7 +4,13 @@ const BYE_SENTINEL = '__bye__';
 
 /** Match index i from ids like `w1-0`, `l3-2` (segment after last hyphen). */
 export function parseBracketMatchIndex(matchId: string): number | null {
-  if (matchId.startsWith('gf-') || matchId.startsWith('p-') || matchId.startsWith('pt-') || matchId.startsWith('net-')) {
+  if (
+    matchId.startsWith('gf-') ||
+    matchId.startsWith('p-') ||
+    matchId.startsWith('c-') ||
+    matchId.startsWith('pt-') ||
+    matchId.startsWith('net-')
+  ) {
     return null;
   }
   const parts = matchId.split('-');

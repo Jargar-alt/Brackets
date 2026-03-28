@@ -2,9 +2,15 @@ import { describe, it, expect } from 'vitest';
 import {
   generateSingleElimination,
   generateDoubleElimination,
-  generatePlayTwice
+  generateRoundRobin,
+  generateGroupStagePool,
+  assignPoolGroupsInOrder,
+  generateCasualFirstRound,
+  buildNextCasualRound,
+  casualMaxRound,
+  casualRoundIsComplete
 } from './generate';
-import { assignNets, assignPlayTwiceNets } from './nets';
+import { assignNets, assignRoundRobinNets } from './nets';
 import {
   parseBracketMatchIndex,
   propagateWinnerToNext,
@@ -144,10 +150,27 @@ describe('generateDoubleElimination', () => {
   });
 });
 
-describe('assignNets (play-twice)', () => {
+describe('generateSingleElimination', () => {
+  it('uses at most one first-round single-team bye when N is odd', () => {
+    const r1 = generateSingleElimination(teams4(5)).filter(x => x.round === 1);
+    const singleBye = r1.filter(
+      x => (x.team1Id && !x.team2Id) || (!x.team1Id && x.team2Id)
+    );
+    const doubleEmpty = r1.filter(x => !x.team1Id && !x.team2Id);
+    expect(singleBye.length).toBe(1);
+    expect(doubleEmpty.length).toBe(0);
+  });
+
+  it('fills round 1 with all paired teams when N is even', () => {
+    const r1 = generateSingleElimination(teams4(6)).filter(x => x.round === 1);
+    expect(r1.every(x => x.team1Id && x.team2Id)).toBe(true);
+  });
+});
+
+describe('assignRoundRobinNets', () => {
   it('never assigns the same team to two incomplete netted matches', () => {
     const teams = teams4(4);
-    const matches = assignNets(generatePlayTwice(teams), 4);
+    const matches = assignRoundRobinNets(generateRoundRobin(teams), 4);
     const active = matches.filter(m => m.netIndex !== undefined && !m.winnerId);
     const perTeam = new Map<string, number>();
     for (const m of active) {
@@ -161,19 +184,100 @@ describe('assignNets (play-twice)', () => {
 
   it('fills nets in parallel when teams do not overlap across chosen matches', () => {
     const teams = teams4(6);
-    const matches = assignNets(generatePlayTwice(teams), 3);
+    const matches = assignRoundRobinNets(generateRoundRobin(teams), 3);
     const assigned = matches.filter(m => m.netIndex !== undefined && !m.winnerId);
     expect(assigned.length).toBe(3);
     expect(new Set(assigned.map(m => m.netIndex)).size).toBe(3);
   });
 
-  it('assignPlayTwiceNets matches assignNets for capacity (ordered queue)', () => {
+  it('matches assignNets capacity for same pool graph', () => {
     const teams = teams4(6);
-    const base = generatePlayTwice(teams);
+    const base = generateRoundRobin(teams);
     const a = assignNets(base, 3);
-    const b = assignPlayTwiceNets(base, 3);
+    const b = assignRoundRobinNets(base, 3);
     const ca = a.filter(m => m.netIndex !== undefined && !m.winnerId).length;
     const cb = b.filter(m => m.netIndex !== undefined && !m.winnerId).length;
     expect(ca).toBe(cb);
+  });
+});
+
+describe('casual waves', () => {
+  it('first round covers every team once', () => {
+    const teams = teams4(4);
+    const m = generateCasualFirstRound(teams);
+    expect(m.length).toBe(2);
+    expect(m.every(x => x.round === 1)).toBe(true);
+    const seen = new Set<string>();
+    for (const x of m) {
+      if (x.team1Id) seen.add(x.team1Id);
+      if (x.team2Id) seen.add(x.team2Id);
+    }
+    expect(seen.size).toBe(4);
+  });
+
+  it('builds next round from completed games', () => {
+    const teams = teams4(4);
+    const r1 = generateCasualFirstRound(teams);
+    const completed = r1.map(m => ({
+      ...m,
+      winnerId: m.team1Id,
+      score1: 2,
+      score2: 0
+    }));
+    expect(casualRoundIsComplete(completed, 1)).toBe(true);
+    const r2 = buildNextCasualRound(teams, completed, 2);
+    expect(r2.length).toBe(2);
+    expect(r2.every(x => x.round === 2)).toBe(true);
+  });
+
+  it('casualMaxRound reads peak wave', () => {
+    expect(
+      casualMaxRound([
+        { id: 'a', team1Id: 't0', team2Id: 't1', round: 2 },
+        { id: 'b', team1Id: 't2', team2Id: 't3', round: 1 }
+      ])
+    ).toBe(2);
+  });
+});
+
+describe('generateRoundRobin', () => {
+  it('has every pair once', () => {
+    const teams = teams4(4);
+    const m = generateRoundRobin(teams);
+    expect(m.length).toBe(6);
+    const pairs = new Set(m.map(x => [x.team1Id, x.team2Id].sort().join('|')));
+    expect(pairs.size).toBe(6);
+  });
+});
+
+describe('generateGroupStagePool', () => {
+  it('round robins within each letter group', () => {
+    const teams = assignPoolGroupsInOrder(teams4(6), 2);
+    const m = generateGroupStagePool(teams);
+    const gA = m.filter(x => x.poolGroup === 'A');
+    const gB = m.filter(x => x.poolGroup === 'B');
+    expect(gA.length).toBe(3);
+    expect(gB.length).toBe(3);
+    expect(m.every(x => x.poolGroup)).toBe(true);
+  });
+});
+
+describe('assignNets double elimination', () => {
+  it('does not assign winners bracket round 2 until all WB round 1 have winners', () => {
+    const matches: Match[] = [
+      {
+        id: 'w1-0',
+        team1Id: 't0',
+        team2Id: 't1',
+        round: 1,
+        bracketType: 'winners',
+        winnerId: 't0'
+      },
+      { id: 'w1-1', team1Id: 't2', team2Id: 't3', round: 1, bracketType: 'winners' },
+      { id: 'w2-0', team1Id: 't0', team2Id: 't2', round: 2, bracketType: 'winners' }
+    ];
+    const out = assignNets(matches, 2, 'double');
+    expect(out.find(m => m.id === 'w2-0')?.netIndex).toBeUndefined();
+    expect(out.find(m => m.id === 'w1-1')?.netIndex).toBeDefined();
   });
 });

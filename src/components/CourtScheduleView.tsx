@@ -4,7 +4,7 @@ import { cn } from '../lib/utils';
 import { Trophy, Layout, Clock, Users } from 'lucide-react';
 import { MatchCard } from './MatchCard';
 
-interface PlayTwiceViewProps {
+export interface CourtScheduleViewProps {
   matches: Match[];
   teams: Team[];
   numNets: number;
@@ -12,16 +12,24 @@ interface PlayTwiceViewProps {
   isFinished?: boolean;
   rules: TournamentRules;
   highlightTeamId?: string | null;
+  queueHelpText?: string;
+  /** Round robin: standings sorted by record. Casual: alphabetical “activity” only (no ranking). */
+  scheduleKind?: 'round-robin' | 'casual';
+  /** Shown in queue hint when scheduleKind is casual. */
+  targetGamesPerTeam?: number;
 }
 
-export const PlayTwiceView: React.FC<PlayTwiceViewProps> = ({
+export const CourtScheduleView: React.FC<CourtScheduleViewProps> = ({
   matches,
   teams,
   numNets,
   onUpdateScore,
   isFinished,
   rules,
-  highlightTeamId
+  highlightTeamId,
+  queueHelpText = 'Matches fill nets in order as games finish. Enter scores on active courts below.',
+  scheduleKind = 'round-robin',
+  targetGamesPerTeam
 }) => {
   const getTeam = (id: string | null | undefined) =>
     id ? teams.find(t => t.id === id) ?? null : null;
@@ -47,16 +55,25 @@ export const PlayTwiceView: React.FC<PlayTwiceViewProps> = ({
         (acc, m) => acc + (m.team1Id === team.id ? (m.score2 || 0) : (m.score1 || 0)),
         0
       );
-      return { ...team, wins, losses, diff: pointsFor - pointsAgainst };
-    }).sort((a, b) => b.wins - a.wins || b.diff - a.diff);
+      return { ...team, wins, losses, diff: pointsFor - pointsAgainst, gp: teamMatches.length };
+    });
+    const sorted =
+      scheduleKind === 'casual'
+        ? [...st].sort((a, b) => a.name.localeCompare(b.name))
+        : [...st].sort((a, b) => b.wins - a.wins || b.diff - a.diff);
 
     return {
       queuedMatches: queued,
       activeMatches: active,
       completedMatches: done,
-      standings: st
+      standings: sorted
     };
-  }, [matches, teams]);
+  }, [matches, teams, scheduleKind]);
+
+  const casualHint =
+    scheduleKind === 'casual' && targetGamesPerTeam != null && targetGamesPerTeam > 0
+      ? targetGamesPerTeam
+      : null;
 
   return (
     <div className="space-y-10">
@@ -71,9 +88,13 @@ export const PlayTwiceView: React.FC<PlayTwiceViewProps> = ({
               </span>
             </span>
           </div>
-          <p className="text-xs font-bold text-black">
-            Matches fill nets in order as games finish. Score only on active courts below.
-          </p>
+          <p className="text-xs font-bold text-black">{queueHelpText}</p>
+          {casualHint != null && (
+            <p className="text-[10px] font-semibold text-zinc-600">
+              {casualHint} wave{casualHint === 1 ? '' : 's'} planned — complete each wave before the next queue opens.
+              Not a formal standings format.
+            </p>
+          )}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {queuedMatches.map((match, i) => (
               <div
@@ -84,6 +105,12 @@ export const PlayTwiceView: React.FC<PlayTwiceViewProps> = ({
                   <span>Up next</span>
                   <span>#{i + 1}</span>
                 </div>
+                {match.poolGroup && (
+                  <div className="text-[9px] font-extrabold text-emerald-800">Group {match.poolGroup}</div>
+                )}
+                {(scheduleKind === 'casual' || (scheduleKind === 'round-robin' && match.round > 1)) && (
+                  <div className="text-[9px] font-bold text-zinc-500">Round {match.round}</div>
+                )}
                 <div className="flex items-center justify-between gap-2 text-sm font-bold text-black">
                   <span className="min-w-0 truncate">{getTeam(match.team1Id)?.name}</span>
                   <span className="shrink-0 text-[10px] text-black/50">vs</span>
@@ -100,7 +127,7 @@ export const PlayTwiceView: React.FC<PlayTwiceViewProps> = ({
       <div className="space-y-4">
         <div className="w95-list-header flex items-center gap-2">
           <Layout className="h-4 w-4" />
-          Active courts
+          Active courts — enter scores here
         </div>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: numNets }).map((_, i) => {
@@ -143,11 +170,21 @@ export const PlayTwiceView: React.FC<PlayTwiceViewProps> = ({
       </div>
 
       <div className="w95-panel overflow-x-auto p-0">
-        <div className="w95-list-header">Standings</div>
+        <div className="w95-list-header">
+          {scheduleKind === 'casual' ? 'Activity (not ranked)' : 'Standings'}
+        </div>
+        {scheduleKind === 'casual' && (
+          <p className="border-b-2 border-[#808080] bg-zinc-50 px-3 py-2 text-[10px] font-semibold text-zinc-600">
+            Rows are alphabetical. Wins and losses are FYI only — this format has no official winner.
+          </p>
+        )}
         <table className="min-w-[400px] w-full border-collapse text-left text-black">
           <thead>
             <tr className="border-b-2 border-[#808080]">
               <th className="w95-inset px-3 py-2 text-[10px] font-bold uppercase">Team</th>
+              {scheduleKind === 'casual' && (
+                <th className="w95-inset px-3 py-2 text-center text-[10px] font-bold uppercase">GP</th>
+              )}
               <th className="w95-inset px-3 py-2 text-center text-[10px] font-bold uppercase">W</th>
               <th className="w95-inset px-3 py-2 text-center text-[10px] font-bold uppercase">L</th>
               <th className="w95-inset px-3 py-2 text-center text-[10px] font-bold uppercase">Diff</th>
@@ -159,22 +196,25 @@ export const PlayTwiceView: React.FC<PlayTwiceViewProps> = ({
                 key={team.id}
                 className={cn(
                   'border-t border-zinc-200',
-                  isFinished && highlightTeamId === team.id && 'bg-emerald-50'
+                  scheduleKind === 'round-robin' && isFinished && highlightTeamId === team.id && 'bg-emerald-50'
                 )}
               >
                 <td
                   className={cn(
                     'px-3 py-2 text-sm font-bold',
-                    isFinished && highlightTeamId === team.id
+                    scheduleKind === 'round-robin' && isFinished && highlightTeamId === team.id
                       ? 'bg-emerald-50 text-emerald-950'
                       : 'bg-white'
                   )}
                 >
                   {team.name}
-                  {isFinished && highlightTeamId === team.id && (
+                  {scheduleKind === 'round-robin' && isFinished && highlightTeamId === team.id && (
                     <span className="ml-2 text-xs font-semibold text-emerald-800">Leader</span>
                   )}
                 </td>
+                {scheduleKind === 'casual' && (
+                  <td className="bg-white px-3 py-2 text-center text-sm">{team.gp}</td>
+                )}
                 <td className="bg-white px-3 py-2 text-center text-sm">{team.wins}</td>
                 <td className="bg-white px-3 py-2 text-center text-sm">{team.losses}</td>
                 <td className="bg-white px-3 py-2 text-center font-mono text-sm font-bold">
@@ -219,6 +259,11 @@ export const PlayTwiceView: React.FC<PlayTwiceViewProps> = ({
                     ? m.sets.map(s => `${s.team1}-${s.team2}`).join(', ')
                     : `${m.score1 ?? 0}-${m.score2 ?? 0} sets`}
                 </div>
+                {m.winnerId && (
+                  <div className="mt-1 text-[10px] font-extrabold uppercase text-emerald-800">
+                    Winner: {getTeam(m.winnerId)?.name ?? m.winnerId}
+                  </div>
+                )}
               </div>
               <Trophy className="ml-2 h-4 w-4 shrink-0 opacity-20" />
             </div>

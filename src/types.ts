@@ -1,4 +1,4 @@
-export type TournamentFormat = 'single' | 'double' | 'pool' | 'play-twice' | 'winners-list';
+export type TournamentFormat = 'single' | 'double' | 'pool' | 'casual' | 'winners-list';
 
 export interface TournamentRules {
   pointsToWin: 15 | 21 | 25;
@@ -6,6 +6,16 @@ export interface TournamentRules {
   thirdSetTo: 15;
   serveToWin: boolean;
   winByTwo: boolean;
+  /**
+   * Casual format only: number of waves (each team plays once per wave). Next wave unlocks when the
+   * current one is finished; pairings favor similar records (winners vs winners when possible).
+   */
+  gamesPerTeam?: number;
+  /**
+   * Round robin (pool): number of World Cup–style groups (1 = one full pool). Teams are assigned
+   * A, B, C… in order; each group plays its own round robin.
+   */
+  poolGroups?: number;
   winnerStays?: boolean;
   maxConsecutiveWins?: number;
   onMaxWins?: 'other-stays' | 'both-off';
@@ -16,6 +26,8 @@ export interface Team {
   name: string;
   players?: number;
   consecutiveWins?: number;
+  /** Pool play: group letter when using multiple groups. */
+  group?: string;
 }
 
 /** Per-set rally scores (team1 = match.team1Id side). */
@@ -38,6 +50,8 @@ export interface Match {
   round: number;
   bracketType?: 'winners' | 'losers';
   netIndex?: number;
+  /** Pool: which group this match belongs to (e.g. A, B). */
+  poolGroup?: string;
 }
 
 export interface TournamentState {
