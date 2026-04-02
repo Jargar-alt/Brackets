@@ -2,6 +2,10 @@ import type { Match } from '../../types';
 
 const BYE_SENTINEL = '__bye__';
 
+type FeederKind = 'winner' | 'loser';
+type Slot = 1 | 2;
+type Feeder = { sourceId: string; kind: FeederKind; slot: Slot };
+
 function placeTeamInPreferredSlot(target: Match, teamId: string, preferredSlot?: 1 | 2): Match {
   if (!teamId) return target;
 
@@ -43,6 +47,90 @@ export function parseBracketMatchIndex(matchId: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+function inferNextFeedSlot(m: Match): Slot | null {
+  if (m.nextMatchSlot) return m.nextMatchSlot;
+  const idx = parseBracketMatchIndex(m.id);
+  if (idx === null) return null;
+  if (m.id.startsWith('w')) return idx % 2 === 0 ? 1 : 2;
+  if (m.id.startsWith('l')) {
+    if (m.round % 2 === 1) return 1;
+    return idx % 2 === 0 ? 1 : 2;
+  }
+  return null;
+}
+
+function inferLoserFeedSlot(m: Match): Slot | null {
+  if (m.loserMatchSlot) return m.loserMatchSlot;
+  const idx = parseBracketMatchIndex(m.id);
+  if (idx === null) return null;
+  if (m.round === 1) return idx % 2 === 0 ? 1 : 2;
+  return 2;
+}
+
+function resolveFeederTeam(source: Match, kind: FeederKind): { resolved: boolean; teamId: string | null } {
+  if (!source.winnerId) return { resolved: false, teamId: null };
+  if (source.winnerId === BYE_SENTINEL) return { resolved: true, teamId: null };
+  if (kind === 'winner') return { resolved: true, teamId: source.winnerId };
+
+  const t1 = source.team1Id;
+  const t2 = source.team2Id;
+  if (source.winnerId === t1) return { resolved: true, teamId: t2 ?? null };
+  if (source.winnerId === t2) return { resolved: true, teamId: t1 ?? null };
+  return { resolved: true, teamId: null };
+}
+
+function slotIsClosed(
+  matchesById: Map<string, Match>,
+  feedersByTarget: Map<string, Feeder[]>,
+  targetId: string,
+  slot: Slot
+): boolean {
+  const feeders = (feedersByTarget.get(targetId) ?? []).filter(f => f.slot === slot);
+  if (feeders.length === 0) return true;
+  return feeders.every(f => {
+    const src = matchesById.get(f.sourceId);
+    if (!src) return true;
+    return resolveFeederTeam(src, f.kind).resolved;
+  });
+}
+
+function hydrateResolvedFeeds(matches: Match[], feedersByTarget: Map<string, Feeder[]>): boolean {
+  let changed = false;
+  const byId = new Map(matches.map(m => [m.id, m]));
+
+  for (let i = 0; i < matches.length; i++) {
+    const target = matches[i];
+    const feeds = feedersByTarget.get(target.id);
+    if (!feeds || feeds.length === 0) continue;
+    const next = { ...target };
+
+    const hydrateSlot = (slot: Slot) => {
+      if (slot === 1 && next.team1Id) return;
+      if (slot === 2 && next.team2Id) return;
+      const candidates = feeds.filter(f => f.slot === slot);
+      for (const feeder of candidates) {
+        const src = byId.get(feeder.sourceId);
+        if (!src) continue;
+        const r = resolveFeederTeam(src, feeder.kind);
+        if (r.resolved && r.teamId) {
+          if (slot === 1) next.team1Id = r.teamId;
+          else next.team2Id = r.teamId;
+          break;
+        }
+      }
+    };
+
+    hydrateSlot(1);
+    hydrateSlot(2);
+    if (next.team1Id !== target.team1Id || next.team2Id !== target.team2Id) {
+      matches[i] = next;
+      changed = true;
+    }
+  }
+
+  return changed;
+}
+
 /**
  * Places winner into the next match for WB/LB only (not grand finals — those are handled in propagateWinnerToNext).
  */
@@ -81,30 +169,46 @@ export function propagateWinner(matches: Match[], currentMatch: Match): void {
 }
 
 /**
- * Round-1 seed byes only: winners `w1-*` (ghost opponents) and casual `c-*` wave-1 walkovers.
- * Does not touch losers bracket or WR2+ — a lone team there is waiting on the sibling feeder, not a bye.
- */
-function isRoundOneByeAutoAdvanceMatch(m: Match): boolean {
-  if (m.round !== 1) return false;
-  return m.id.startsWith('w') || m.id.startsWith('c-');
-}
-
-/**
- * Auto-advance **round 1** seed byes (one team, empty opponent). Winner is placed in the next match once; no further chain.
- * Casual `c-*` matches get a winner only (`propagateWinner` is a no-op for those ids).
+ * Auto-resolve uncontested matches once all feeders for an empty slot are resolved.
+ * This covers seeded byes and downstream bracket walkovers (including losers bracket).
  */
 export function autoAdvanceByes(matches: Match[]): Match[] {
   let updated = [...matches];
+  const feedersByTarget = new Map<string, Feeder[]>();
+  for (const m of updated) {
+    if (m.nextMatchId) {
+      const slot = inferNextFeedSlot(m);
+      if (slot) {
+        const arr = feedersByTarget.get(m.nextMatchId) ?? [];
+        arr.push({ sourceId: m.id, kind: 'winner', slot });
+        feedersByTarget.set(m.nextMatchId, arr);
+      }
+    }
+    if (m.loserMatchId) {
+      const slot = inferLoserFeedSlot(m);
+      if (slot) {
+        const arr = feedersByTarget.get(m.loserMatchId) ?? [];
+        arr.push({ sourceId: m.id, kind: 'loser', slot });
+        feedersByTarget.set(m.loserMatchId, arr);
+      }
+    }
+  }
   let changed = true;
 
   while (changed) {
     changed = false;
+    if (hydrateResolvedFeeds(updated, feedersByTarget)) {
+      changed = true;
+    }
+    const byId = new Map(updated.map(m => [m.id, m]));
+
     for (let i = 0; i < updated.length; i++) {
       const m = updated[i];
       if (m.winnerId) continue;
-      if (!isRoundOneByeAutoAdvanceMatch(m)) continue;
+      const hasTeam1 = Boolean(m.team1Id);
+      const hasTeam2 = Boolean(m.team2Id);
 
-      if (m.team1Id && !m.team2Id) {
+      if (hasTeam1 && !hasTeam2 && slotIsClosed(byId, feedersByTarget, m.id, 2)) {
         updated[i] = {
           ...m,
           winnerId: m.team1Id,
@@ -115,7 +219,7 @@ export function autoAdvanceByes(matches: Match[]): Match[] {
         };
         changed = true;
         propagateWinner(updated, updated[i]);
-      } else if (!m.team1Id && m.team2Id) {
+      } else if (!hasTeam1 && hasTeam2 && slotIsClosed(byId, feedersByTarget, m.id, 1)) {
         updated[i] = {
           ...m,
           winnerId: m.team2Id,
@@ -126,7 +230,12 @@ export function autoAdvanceByes(matches: Match[]): Match[] {
         };
         changed = true;
         propagateWinner(updated, updated[i]);
-      } else if (!m.team1Id && !m.team2Id) {
+      } else if (
+        !hasTeam1 &&
+        !hasTeam2 &&
+        slotIsClosed(byId, feedersByTarget, m.id, 1) &&
+        slotIsClosed(byId, feedersByTarget, m.id, 2)
+      ) {
         updated[i] = { ...m, winnerId: BYE_SENTINEL, score1: 0, score2: 0 };
         changed = true;
       }

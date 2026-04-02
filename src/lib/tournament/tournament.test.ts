@@ -123,6 +123,27 @@ describe('autoAdvanceByes', () => {
     expect(w30?.team1Id).toBeNull();
     expect(w30?.winnerId).toBeFalsy();
   });
+
+  it('auto-advances losers bracket walkover created by seeded byes', () => {
+    let m = autoAdvanceByes(generateDoubleElimination(teams4(5)).map(x => ({ ...x })));
+
+    const w11Idx = m.findIndex(x => x.id === 'w1-1');
+    expect(w11Idx).toBeGreaterThanOrEqual(0);
+    const w11 = m[w11Idx]!;
+    expect(w11.team1Id && w11.team2Id).toBeTruthy();
+
+    const scored = { ...w11, winnerId: w11.team1Id, score1: 1, score2: 0 };
+    m[w11Idx] = scored;
+    propagateWinnerToNext(m, scored, scored.id, scored.winnerId!);
+    propagateLoserToBracket(m, scored, scored.id, scored.team2Id!);
+
+    m = autoAdvanceByes(m);
+
+    const l10 = m.find(x => x.id === 'l1-0');
+    const l20 = m.find(x => x.id === 'l2-0');
+    expect(l10?.winnerId).toBe(scored.team2Id);
+    expect(l20?.team1Id).toBe(scored.team2Id);
+  });
 });
 
 describe('propagateWinnerToNext', () => {
