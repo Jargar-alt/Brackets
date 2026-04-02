@@ -3,7 +3,7 @@ import { Match, Team, TournamentRules, SetScore } from '../types';
 import { cn } from '../lib/utils';
 import { Trophy, Layout, Clock, Users } from 'lucide-react';
 import { MatchCard } from './MatchCard';
-import { matchIsOnNet, matchIsWaitingForCourt, isWinnersR1ByeSlot } from '../lib/matchSchedule';
+import { matchIsOnNet, matchIsWaitingForCourt, isAutoAdvancePlaceholder } from '../lib/matchSchedule';
 import { matchCountsTowardEliminationRecord } from '../lib/tournament/records';
 
 export interface CourtScheduleViewProps {
@@ -43,7 +43,9 @@ export const CourtScheduleView: React.FC<CourtScheduleViewProps> = ({
     const queued = matches
       .filter(m => matchIsWaitingForCourt(m))
       .sort((a, b) => (a.round ?? 0) - (b.round ?? 0) || a.id.localeCompare(b.id));
-    const done = matches.filter(m => m.winnerId).sort((a, b) => (b.round ?? 0) - (a.round ?? 0));
+    const done = matches
+      .filter(m => m.winnerId && !isAutoAdvancePlaceholder(m))
+      .sort((a, b) => (b.round ?? 0) - (a.round ?? 0));
 
     const st = teams.map(team => {
       const teamMatches = matches.filter(m => m.team1Id === team.id || m.team2Id === team.id);
@@ -118,7 +120,7 @@ export const CourtScheduleView: React.FC<CourtScheduleViewProps> = ({
                   <span className="min-w-0 truncate">{getTeam(match.team1Id)?.name ?? '—'}</span>
                   <span className="shrink-0 text-[10px] text-black/50">vs</span>
                   <span className="min-w-0 truncate text-right">
-                    {getTeam(match.team2Id)?.name ?? (isWinnersR1ByeSlot(match) ? 'Bye' : '—')}
+                    {getTeam(match.team2Id)?.name ?? '—'}
                   </span>
                 </div>
               </div>

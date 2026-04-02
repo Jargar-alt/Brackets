@@ -126,6 +126,36 @@ describe('autoAdvanceByes', () => {
 });
 
 describe('propagateWinnerToNext', () => {
+  it('uses explicit nextMatchSlot when present', () => {
+    const matches: Match[] = [
+      {
+        id: 'w1-10',
+        team1Id: 'a',
+        team2Id: 'b',
+        round: 1,
+        bracketType: 'winners',
+        nextMatchId: 'w2-5',
+        nextMatchSlot: 1
+      },
+      {
+        id: 'w2-5',
+        team1Id: null,
+        team2Id: null,
+        round: 2,
+        bracketType: 'winners',
+        nextMatchId: null
+      }
+    ];
+    const scored = { ...matches[0], winnerId: 'a' };
+    const copy = matches.map(m => ({ ...m }));
+    copy[0] = scored;
+    const { tournamentComplete } = propagateWinnerToNext(copy, scored, 'w1-10', 'a');
+    expect(tournamentComplete).toBe(false);
+    const target = copy.find(m => m.id === 'w2-5');
+    expect(target?.team1Id).toBe('a');
+    expect(target?.team2Id).toBeNull();
+  });
+
   it('completes tournament on gf-2', () => {
     const matches: Match[] = [
       {
@@ -254,6 +284,44 @@ describe('generateDoubleElimination', () => {
     expect(l10?.team1Id).toBe('la');
     expect(l10?.team2Id).toBe('lb');
   });
+
+  it('maps WB R1 loser drops by numeric index for 32 teams', () => {
+    const m = generateDoubleElimination(teams4(32));
+    const wbR1 = m.filter(x => x.id.startsWith('w1-'));
+    for (const match of wbR1) {
+      const idx = parseBracketMatchIndex(match.id);
+      expect(idx).not.toBeNull();
+      const i = idx!;
+      expect(match.loserMatchId).toBe(`l1-${Math.floor(i / 2)}`);
+      expect(match.loserMatchSlot).toBe(i % 2 === 0 ? 1 : 2);
+    }
+  });
+
+  it('maps WB R2+ loser drops to deterministic LB slot 2', () => {
+    const m = generateDoubleElimination(teams4(32));
+    const wb = m.filter(x => x.bracketType === 'winners' && /^w\d+-\d+$/.test(x.id));
+    for (const match of wb) {
+      const parts = match.id.match(/^w(\d+)-(\d+)$/);
+      expect(parts).toBeTruthy();
+      const round = Number(parts![1]);
+      const idx = Number(parts![2]);
+      if (round < 2) continue;
+      const lid = `l${(round - 1) * 2}-${idx}`;
+      expect(match.loserMatchId).toBe(lid);
+      expect(match.loserMatchSlot).toBe(2);
+    }
+  });
+
+  it('routes WB R1 losers into the same L1 match for multi-digit indices', () => {
+    const m0 = generateDoubleElimination(teams4(32)).map(x => ({ ...x }));
+    const w110 = m0.find(x => x.id === 'w1-10')!;
+    const w111 = m0.find(x => x.id === 'w1-11')!;
+    propagateLoserToBracket(m0, w110, 'w1-10', 'la');
+    propagateLoserToBracket(m0, w111, 'w1-11', 'lb');
+    const l15 = m0.find(x => x.id === 'l1-5');
+    expect(l15?.team1Id).toBe('la');
+    expect(l15?.team2Id).toBe('lb');
+  });
 });
 
 describe('nextPowerOf2AtLeast / bracketLeafSeedOrder', () => {
@@ -300,6 +368,15 @@ describe('generateSingleElimination', () => {
   it('returns no matches for 0 or 1 teams', () => {
     expect(generateSingleElimination([])).toEqual([]);
     expect(generateSingleElimination(teams4(1))).toEqual([]);
+  });
+
+  it('keeps numeric round-1 slot ordering for multi-digit match ids', () => {
+    const r1 = generateSingleElimination(teams4(32)).filter(x => x.round === 1);
+    const byId = new Map(r1.map(x => [x.id, x]));
+    expect(byId.get('w1-0')?.team1Id).toBe('t0');
+    expect(byId.get('w1-0')?.team2Id).toBe('t31');
+    expect(byId.get('w1-10')?.team1Id).toBeTruthy();
+    expect(byId.get('w1-10')?.team2Id).toBeTruthy();
   });
 });
 

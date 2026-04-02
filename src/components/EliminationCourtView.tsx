@@ -3,7 +3,7 @@ import { Match, SetScore, Team, TournamentRules } from '../types';
 import { cn } from '../lib/utils';
 import { GitMerge, Info } from 'lucide-react';
 import { CourtScheduleView } from './CourtScheduleView';
-import { isWinnersR1ByeSlot } from '../lib/matchSchedule';
+import { isAutoAdvancePlaceholder } from '../lib/matchSchedule';
 
 interface EliminationCourtViewProps {
   matches: Match[];
@@ -27,10 +27,11 @@ export function BracketReferenceStrip({
   label: string;
 }) {
   const rounds = useMemo(() => {
-    const rs = Array.from(new Set(matches.map(m => m.round))).sort((a, b) => a - b);
+    const visible = matches.filter(m => !isAutoAdvancePlaceholder(m));
+    const rs = Array.from(new Set(visible.map(m => m.round))).sort((a, b) => a - b);
     return rs.map(r => ({
       round: r,
-      list: matches.filter(m => m.round === r)
+      list: visible.filter(m => m.round === r)
     }));
   }, [matches]);
 
@@ -38,7 +39,7 @@ export function BracketReferenceStrip({
     id ? teams.find(t => t.id === id)?.name ?? '—' : '—';
 
   const scoreLine = (m: Match) => {
-    if (m.byeWalkover) return 'Walkover (seed bye)';
+    if (m.byeWalkover) return null;
     if (m.sets && m.sets.length > 0) return m.sets.map(s => `${s.team1}-${s.team2}`).join(', ');
     if (m.score1 != null && m.score2 != null) return `${m.score1}-${m.score2}`;
     return null;
@@ -90,7 +91,7 @@ export function BracketReferenceStrip({
                         !m.team2Id && !t2w && 'italic text-zinc-400'
                       )}
                     >
-                      {m.team2Id ? name(m.team2Id) : isWinnersR1ByeSlot(m) ? 'Bye' : '—'}
+                      {name(m.team2Id)}
                     </div>
                     {sl && (
                       <div className="mt-0.5 font-mono text-[8px] font-semibold text-zinc-600">

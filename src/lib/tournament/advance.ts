@@ -2,6 +2,30 @@ import type { Match } from '../../types';
 
 const BYE_SENTINEL = '__bye__';
 
+function placeTeamInPreferredSlot(target: Match, teamId: string, preferredSlot?: 1 | 2): Match {
+  if (!teamId) return target;
+
+  const writeSlot = (slot: 1 | 2): boolean => {
+    if (slot === 1) {
+      if (!target.team1Id || target.team1Id === teamId) {
+        target.team1Id = teamId;
+        return true;
+      }
+      return false;
+    }
+    if (!target.team2Id || target.team2Id === teamId) {
+      target.team2Id = teamId;
+      return true;
+    }
+    return false;
+  };
+
+  if (preferredSlot && writeSlot(preferredSlot)) return target;
+  if (writeSlot(1)) return target;
+  writeSlot(2);
+  return target;
+}
+
 /** Match index i from ids like `w1-0`, `l3-2` (segment after last hyphen). */
 export function parseBracketMatchIndex(matchId: string): number | null {
   if (
@@ -32,6 +56,10 @@ export function propagateWinner(matches: Match[], currentMatch: Match): void {
   if (nextMatchIdx === -1) return;
 
   const nextMatch = { ...matches[nextMatchIdx] };
+  if (currentMatch.nextMatchSlot) {
+    matches[nextMatchIdx] = placeTeamInPreferredSlot(nextMatch, winnerId, currentMatch.nextMatchSlot);
+    return;
+  }
   const matchIdx = parseBracketMatchIndex(currentMatch.id);
   if (matchIdx === null) return;
 
@@ -135,6 +163,11 @@ export function propagateWinnerToNext(
   const nextMatch = { ...updatedMatches[nextMatchIdx] };
   let tournamentComplete = false;
 
+  if (matchId !== 'gf-1' && currentMatch.nextMatchSlot) {
+    updatedMatches[nextMatchIdx] = placeTeamInPreferredSlot(nextMatch, winnerId, currentMatch.nextMatchSlot);
+    return { tournamentComplete: false };
+  }
+
   if (matchId.startsWith('w')) {
     const idx = parseBracketMatchIndex(matchId);
     if (idx === null) return { tournamentComplete: false };
@@ -176,6 +209,15 @@ export function propagateLoserToBracket(
   if (loserMatchIdx === -1) return;
 
   const loserMatch = { ...updatedMatches[loserMatchIdx] };
+
+  if (currentMatch.loserMatchSlot) {
+    updatedMatches[loserMatchIdx] = placeTeamInPreferredSlot(
+      loserMatch,
+      loserId,
+      currentMatch.loserMatchSlot
+    );
+    return;
+  }
 
   if (currentMatch.round === 1) {
     const idx = parseBracketMatchIndex(matchId);

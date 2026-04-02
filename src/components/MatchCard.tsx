@@ -2,7 +2,7 @@ import React from 'react';
 import { Match, Team, TournamentRules, SetScore } from '../types';
 import { AlertCircle } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { matchIsOnNet, isWinnersR1ByeSlot } from '../lib/matchSchedule';
+import { matchIsOnNet } from '../lib/matchSchedule';
 import { isValidCompletedSet, validateMatchSets } from '../lib/tournament/scoring';
 
 interface MatchCardProps {
@@ -146,9 +146,6 @@ export const MatchCard: React.FC<MatchCardProps> = ({
               <p className="mt-0.5 text-base font-bold text-emerald-950">
                 {teams.find(t => t.id === match.winnerId)?.name ?? 'Team'}
               </p>
-              <p className="mt-1 text-[9px] font-semibold leading-snug text-emerald-900/85">
-                Seed bye — omitted from standings
-              </p>
             </>
           ) : (
             <>
@@ -209,12 +206,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
           )}
         >
           <span className="flex-1 truncate pr-2 text-sm font-bold">
-            {team2?.name ||
-              (isWinnersR1ByeSlot(match) ? (
-                <span className="font-semibold italic text-zinc-600">Bye</span>
-              ) : (
-                <span className="font-normal italic text-black/50">TBD</span>
-              ))}
+            {team2?.name || <span className="font-normal italic text-black/50">TBD</span>}
           </span>
           <input
             type="number"

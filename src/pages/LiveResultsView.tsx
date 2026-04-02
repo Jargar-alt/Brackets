@@ -6,7 +6,7 @@ import type { Match, Team, TournamentFormat, TournamentRules } from '../types';
 import { cn } from '../lib/utils';
 import { Radio, LayoutGrid, Trophy, Users, Clock, Home } from 'lucide-react';
 import { BracketReferenceStrip } from '../components/EliminationCourtView';
-import { matchIsOnNet, matchIsWaitingForCourt, isWinnersR1ByeSlot } from '../lib/matchSchedule';
+import { matchIsOnNet, matchIsWaitingForCourt, isAutoAdvancePlaceholder } from '../lib/matchSchedule';
 import { resolveDisplayChampion } from '../lib/tournament/champion';
 import { matchCountsTowardEliminationRecord } from '../lib/tournament/records';
 
@@ -92,7 +92,6 @@ export function LiveResultsView() {
   const elimOpponentLabel = (m: Match, side: 1 | 2) => {
     const id = side === 1 ? m.team1Id : m.team2Id;
     if (id) return teamName(id);
-    if (side === 2 && isWinnersR1ByeSlot(m)) return 'Bye';
     return '—';
   };
 
@@ -118,7 +117,7 @@ export function LiveResultsView() {
         return (a.round ?? 0) - (b.round ?? 0) || a.id.localeCompare(b.id);
       });
     const done = matches
-      .filter(m => m.winnerId)
+      .filter(m => m.winnerId && !isAutoAdvancePlaceholder(m))
       .sort((a, b) => b.id.localeCompare(a.id))
       .slice(0, 16);
 
@@ -134,7 +133,12 @@ export function LiveResultsView() {
   }, [matches, numNets]);
 
   const elimMatches = useMemo(
-    () => matches.filter(m => m.id.startsWith('w') || m.id.startsWith('l') || m.id.startsWith('gf-')),
+    () =>
+      matches.filter(
+        m =>
+          (m.id.startsWith('w') || m.id.startsWith('l') || m.id.startsWith('gf-')) &&
+          !isAutoAdvancePlaceholder(m)
+      ),
     [matches]
   );
 

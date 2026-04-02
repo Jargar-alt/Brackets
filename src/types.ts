@@ -48,7 +48,11 @@ export interface Match {
   /** True when the winner advanced from a seeded R1 bye (no real match) — omit from team records. */
   byeWalkover?: boolean;
   nextMatchId?: string | null;
+  /** Preferred slot in nextMatchId where winner should be placed. */
+  nextMatchSlot?: 1 | 2;
   loserMatchId?: string | null;
+  /** Preferred slot in loserMatchId where loser should be placed. */
+  loserMatchSlot?: 1 | 2;
   round: number;
   bracketType?: 'winners' | 'losers';
   netIndex?: number;

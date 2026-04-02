@@ -51,13 +51,19 @@ export function generateSingleElimination(
         team2Id: null,
         round: r,
         bracketType,
-        nextMatchId: r < R ? `${prefix}${r + 1}-${Math.floor(i / 2)}` : null
+        nextMatchId: r < R ? `${prefix}${r + 1}-${Math.floor(i / 2)}` : null,
+        nextMatchSlot: i % 2 === 0 ? 1 : 2
       });
     }
   }
 
   const order = bracketLeafSeedOrder(P);
-  const r1 = matches.filter(m => m.round === 1).sort((a, b) => a.id.localeCompare(b.id));
+  const r1 = matches.filter(m => m.round === 1).sort((a, b) => {
+    const ai = parseInt(a.id.split('-').pop() ?? '', 10);
+    const bi = parseInt(b.id.split('-').pop() ?? '', 10);
+    if (Number.isFinite(ai) && Number.isFinite(bi)) return ai - bi;
+    return a.id.localeCompare(b.id);
+  });
 
   for (let i = 0; i < r1.length; i++) {
     const sa = order[2 * i]!;
@@ -101,7 +107,9 @@ export function generateDoubleElimination(teams: Team[]): Match[] {
         team2Id: null,
         round: r,
         bracketType: 'losers',
-        nextMatchId
+        nextMatchId,
+        nextMatchSlot:
+          r >= numLBRounds ? 2 : r % 2 !== 0 ? 1 : i % 2 === 0 ? 1 : 2
       });
     }
   }
@@ -110,21 +118,32 @@ export function generateDoubleElimination(teams: Team[]): Match[] {
 
   winners
     .filter(m => m.round === 1)
-    .sort((a, b) => a.id.localeCompare(b.id))
-    .forEach((m, i) => {
-      const lid = `l1-${Math.floor(i / 2)}`;
-      if (loserIds.has(lid)) m.loserMatchId = lid;
+    .forEach(m => {
+      const parts = m.id.split('-');
+      const idx = parseInt(parts[parts.length - 1] ?? '', 10);
+      if (!Number.isFinite(idx)) return;
+      const lid = `l1-${Math.floor(idx / 2)}`;
+      if (loserIds.has(lid)) {
+        m.loserMatchId = lid;
+        m.loserMatchSlot = idx % 2 === 0 ? 1 : 2;
+      }
     });
 
   for (let r = 2; r <= k; r++) {
     winners
       .filter(m => m.round === r)
-      .sort((a, b) => a.id.localeCompare(b.id))
-      .forEach((m, i) => {
+      .forEach(m => {
+        const parts = m.id.split('-');
+        const idx = parseInt(parts[parts.length - 1] ?? '', 10);
+        if (!Number.isFinite(idx)) return;
         const lbRound = (r - 1) * 2;
         if (lbRound <= numLBRounds) {
-          const lid = `l${lbRound}-${i}`;
-          if (loserIds.has(lid)) m.loserMatchId = lid;
+          const lid = `l${lbRound}-${idx}`;
+          if (loserIds.has(lid)) {
+            m.loserMatchId = lid;
+            // In standard DE topology, WB drop occupies side 2 while LB survivor feeds side 1.
+            m.loserMatchSlot = 2;
+          }
         }
       });
   }
@@ -132,7 +151,10 @@ export function generateDoubleElimination(teams: Team[]): Match[] {
   const wbFinal = winners.find(m => m.round === k);
   const lbFinal = losers.find(m => m.round === numLBRounds);
 
-  if (wbFinal) wbFinal.nextMatchId = 'gf-1';
+  if (wbFinal) {
+    wbFinal.nextMatchId = 'gf-1';
+    wbFinal.nextMatchSlot = 1;
+  }
   if (lbFinal) lbFinal.nextMatchId = 'gf-1';
 
   const grandFinal: Match = {
