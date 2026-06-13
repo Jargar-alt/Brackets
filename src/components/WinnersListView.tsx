@@ -1,7 +1,8 @@
 import React from 'react';
 import { Match, Team, TournamentRules, SetScore } from '../types';
 import { MatchCard } from './MatchCard';
-import { Users, Layout, ArrowRight, Trophy, Clock, Plus, Trash2 } from 'lucide-react';
+import { RecentResults } from './RecentResults';
+import { Users, Layout, ArrowRight, Clock, Plus, Trash2 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { matchIsOnNet } from '../lib/matchSchedule';
 import { motion, AnimatePresence } from 'motion/react';
@@ -244,48 +245,10 @@ export const WinnersListView: React.FC<WinnersListViewProps> = ({
         </div>
       </div>
 
-      <div className="space-y-4">
-        <div className="w95-list-header flex items-center gap-2">
-          <Trophy className="w-4 h-4" />
-          Recent Results
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-          {completedMatches.slice(0, 8).map(match => (
-            <div key={match.id} className="w95-panel py-3 flex items-center justify-between">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1 flex-wrap">
-                  <span
-                    className={cn(
-                      'text-xs font-bold truncate',
-                      match.winnerId === match.team1Id ? 'text-ink underline' : 'text-ink-muted'
-                    )}
-                  >
-                    {getTeam(match.team1Id)?.name}
-                  </span>
-                  <span className="text-[10px] text-ink-muted">vs</span>
-                  <span
-                    className={cn(
-                      'text-xs font-bold truncate',
-                      match.winnerId === match.team2Id ? 'text-ink underline' : 'text-ink-muted'
-                    )}
-                  >
-                    {getTeam(match.team2Id)?.name}
-                  </span>
-                </div>
-                <div className="text-[10px] font-bold uppercase text-ink-secondary">
-                  {match.score1} - {match.score2} sets
-                </div>
-              </div>
-              <Trophy className="w-4 h-4 opacity-20 shrink-0 ml-2" />
-            </div>
-          ))}
-          {completedMatches.length === 0 && (
-            <div className="col-span-full p-8 text-center w95-inset rounded-lg border border-dashed border-white/15 text-ink-muted text-xs font-bold">
-              No completed matches
-            </div>
-          )}
-        </div>
-      </div>
+      <RecentResults
+        matches={completedMatches}
+        teams={teams}
+      />
     </div>
   );
 };

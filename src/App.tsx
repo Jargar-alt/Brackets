@@ -19,7 +19,7 @@ import {
   propagateLoserToBracket
 } from './lib/tournament/advance';
 import { matchOutcomeFromSets } from './lib/tournament/scoring';
-import { resolveDisplayChampion } from './lib/tournament/champion';
+import { resolveDisplayChampion, isTournamentDecided } from './lib/tournament/champion';
 import { TeamCalculator } from './components/TeamCalculator';
 import { CourtScheduleView } from './components/CourtScheduleView';
 import { EliminationCourtView } from './components/EliminationCourtView';
@@ -926,6 +926,10 @@ export default function App() {
       tournamentComplete = true;
     }
 
+    if (!tournamentComplete && isTournamentDecided(format, matchesWithNets)) {
+      tournamentComplete = true;
+    }
+
     if (tournamentId && db) {
       try {
         await setDoc(doc(db, 'tournaments', tournamentId, 'matches', matchId), matchToFirestore(currentMatch));
@@ -941,6 +945,7 @@ export default function App() {
 
         if (tournamentComplete) {
           await updateDoc(doc(db, 'tournaments', tournamentId), { isFinished: true });
+          setIsFinished(true);
         }
       } catch (err) {
         console.error('[Firestore] score save failed:', err);
@@ -1743,28 +1748,41 @@ export default function App() {
                       All scheduled games are done. This format does not name a tournament winner.
                     </p>
                   </>
+                ) : format === 'pool' && displayChampion ? (
+                  <>
+                    <p className="text-xs font-semibold uppercase tracking-widest text-win">
+                      Pool play winner
+                    </p>
+                    <p className="mt-2 text-3xl font-bold leading-tight text-ink sm:text-4xl">
+                      {displayChampion.name}
+                    </p>
+                    <p className="mt-2 text-sm text-ink-secondary">
+                      Best record when all pool matches finished
+                    </p>
+                  </>
+                ) : displayChampion ? (
+                  <>
+                    <p className="text-xs font-semibold uppercase tracking-widest text-win">
+                      Tournament champion
+                    </p>
+                    <p className="mt-2 text-3xl font-bold leading-tight text-ink sm:text-4xl">
+                      {displayChampion.name}
+                    </p>
+                    <p className="mt-2 text-sm font-medium text-ink-secondary">
+                      First to {rules.pointsToWin}
+                      {rules.bestOf === 3 ? ' · Best of 3' : ' · One set'}
+                      {rules.winByTwo ? ' · Win by 2' : ''}
+                      {rules.serveToWin ? ' · Serve to win' : ''}
+                    </p>
+                  </>
                 ) : (
                   <>
                     <p className="text-xs font-semibold uppercase tracking-widest text-win">
-                      Tournament winner
+                      Tournament complete
                     </p>
-                    {displayChampion ? (
-                      <>
-                        <p className="mt-2 text-3xl font-bold leading-tight text-ink sm:text-4xl">
-                          {displayChampion.name}
-                        </p>
-                        <p className="mt-2 text-sm font-medium text-ink-secondary">
-                          First to {rules.pointsToWin}
-                          {rules.bestOf === 3 ? ' · Best of 3' : ' · One set'}
-                          {rules.winByTwo ? ' · Win by 2' : ''}
-                          {rules.serveToWin ? ' · Serve to win (game point on serve)' : ''}
-                        </p>
-                      </>
-                    ) : (
-                      <p className="mt-3 text-lg font-semibold text-ink">
-                        Tournament complete — winner not determined from scores.
-                      </p>
-                    )}
+                    <p className="mt-3 text-lg font-semibold text-ink">
+                      All matches finished — review standings for placement.
+                    </p>
                   </>
                 )}
               </div>
@@ -1796,7 +1814,13 @@ export default function App() {
                       {inviteCode}
                     </div>
                   )}
-                  {isFinished && (
+                  {isFinished && displayChampion && format !== 'casual' && (
+                    <div className="flex items-center gap-2 rounded-lg border border-win/30 bg-win/10 px-2 py-1.5 text-xs font-semibold text-win">
+                      <Trophy className="h-4 w-4" />
+                      {displayChampion.name}
+                    </div>
+                  )}
+                  {isFinished && !displayChampion && format !== 'casual' && (
                     <div className="flex items-center gap-2 rounded-lg border border-win/30 bg-win/10 px-2 py-1.5 text-xs font-semibold text-win">
                       <Trophy className="h-4 w-4" />
                       Complete

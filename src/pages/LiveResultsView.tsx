@@ -7,6 +7,7 @@ import { cn } from '../lib/utils';
 import { Radio, LayoutGrid, Trophy, Users, Clock, Home } from 'lucide-react';
 import { BracketReferenceStrip } from '../components/EliminationCourtView';
 import { LiveFeed } from '../components/LiveFeed';
+import { RecentResults } from '../components/RecentResults';
 import { matchIsOnNet, matchIsWaitingForCourt, isAutoAdvancePlaceholder } from '../lib/matchSchedule';
 import { resolveDisplayChampion } from '../lib/tournament/champion';
 import { matchCountsTowardEliminationRecord } from '../lib/tournament/records';
@@ -403,36 +404,11 @@ export function LiveResultsView() {
           </section>
         )}
 
-        <section className="w95-panel space-y-3 p-4">
-          <div className="w95-list-header -mx-4 -mt-4 mb-2 flex items-center gap-2">
-            <Trophy className="h-4 w-4" />
-            Recent results
-          </div>
-          <div className="grid gap-2 sm:grid-cols-2">
-            {recentDone.map(m => (
-              <div key={m.id} className="rounded-lg border border-white/8 bg-surface-raised px-3 py-2 text-xs text-ink">
-                <div className="font-bold">
-                  <span className={m.winnerId === m.team1Id ? 'text-win' : ''}>
-                    {elimOpponentLabel(m, 1)}
-                  </span>
-                  <span className="mx-1 text-ink-muted">vs</span>
-                  <span className={m.winnerId === m.team2Id ? 'text-win' : ''}>
-                    {elimOpponentLabel(m, 2)}
-                  </span>
-                </div>
-                {m.sets && m.sets.length > 0 && (
-                  <div className="mt-1 font-mono text-[10px] text-ink-muted">
-                    {m.sets.map(s => `${s.team1}-${s.team2}`).join(', ')}
-                  </div>
-                )}
-                <div className="mt-1 font-extrabold text-win">W: {teamName(m.winnerId)}</div>
-              </div>
-            ))}
-          </div>
-          {recentDone.length === 0 && (
-            <p className="text-xs font-semibold text-ink-muted">No finished matches yet.</p>
-          )}
-        </section>
+        <RecentResults
+          matches={recentDone}
+          teams={teams}
+          championId={displayChampion?.id}
+        />
 
         <p className="text-center text-[10px] text-ink-muted">
           Read-only feed · Scores come from the director’s console

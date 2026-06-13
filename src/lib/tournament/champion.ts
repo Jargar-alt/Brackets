@@ -1,25 +1,47 @@
 import type { Match, Team, TournamentFormat } from '../../types';
 import { BYE_SENTINEL } from './advance';
+import { isAutoAdvancePlaceholder } from '../matchSchedule';
 
 function isRealWinner(id: string | null | undefined): id is string {
   return Boolean(id && id !== BYE_SENTINEL);
 }
 
-/** Resolve tournament champion team id when `isFinished` is true. */
+function singleElimFinal(matches: Match[]): Match | null {
+  const winners = matches.filter(
+    m => m.bracketType !== 'losers' && !isAutoAdvancePlaceholder(m) && m.team1Id && m.team2Id
+  );
+  if (!winners.length) return null;
+  const maxRound = Math.max(...winners.map(m => m.round));
+  const finals = winners.filter(m => m.round === maxRound);
+  return finals.length === 1 ? finals[0]! : null;
+}
+
+/** Resolve tournament champion team id from bracket state. */
 export function resolveChampionTeamId(matches: Match[]): string | null {
   const gf2 = matches.find(m => m.id === 'gf-2');
   if (isRealWinner(gf2?.winnerId)) return gf2!.winnerId!;
 
   const gf1 = matches.find(m => m.id === 'gf-1');
-  if (isRealWinner(gf1?.winnerId)) return gf1!.winnerId!;
+  if (gf1 && isRealWinner(gf1.winnerId)) {
+    if (gf1.winnerId === gf1.team1Id) return gf1.winnerId;
+    return null;
+  }
 
-  const terminal = matches.find(m => !m.nextMatchId && isRealWinner(m.winnerId));
-  if (terminal?.winnerId) return terminal.winnerId;
+  const final = singleElimFinal(matches);
+  if (final && isRealWinner(final.winnerId)) return final.winnerId;
 
-  const ranked = [...matches]
-    .filter(m => isRealWinner(m.winnerId))
-    .sort((a, b) => b.round - a.round);
-  return ranked[0]?.winnerId ?? null;
+  return null;
+}
+
+/** True when the bracket has a decided champion (auto-finish eligible). */
+export function isTournamentDecided(format: TournamentFormat, matches: Match[]): boolean {
+  if (format === 'pool' || format === 'casual') {
+    return matches.length > 0 && matches.every(m => m.winnerId);
+  }
+  if (format === 'single' || format === 'double') {
+    return resolveChampionTeamId(matches) !== null;
+  }
+  return false;
 }
 
 /** Champion team for UI when tournament is finished (all formats). */

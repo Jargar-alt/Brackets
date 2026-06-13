@@ -21,7 +21,7 @@ import {
   BYE_SENTINEL
 } from './advance';
 import { matchOutcomeFromSets, isValidCompletedSet } from './scoring';
-import { resolveChampionTeamId } from './champion';
+import { resolveChampionTeamId, isTournamentDecided } from './champion';
 import { matchIsOnNet, matchIsWaitingForCourt } from '../matchSchedule';
 import type { Match, Team, TournamentRules } from '../../types';
 
@@ -256,6 +256,38 @@ describe('resolveChampionTeamId', () => {
     const m: Match[] = [
       { id: 'gf-1', team1Id: 'a', team2Id: 'b', round: 2, winnerId: 'b', nextMatchId: 'gf-2' },
       { id: 'gf-2', team1Id: 'a', team2Id: 'b', round: 3, winnerId: 'a', nextMatchId: null }
+    ];
+    expect(resolveChampionTeamId(m)).toBe('a');
+  });
+
+  it('does not crown gf-1 when losers-bracket champ must win gf-2', () => {
+    const m: Match[] = [
+      { id: 'gf-1', team1Id: 'wb', team2Id: 'lb', round: 2, winnerId: 'lb', nextMatchId: 'gf-2' },
+      { id: 'gf-2', team1Id: 'wb', team2Id: 'lb', round: 3, winnerId: null, nextMatchId: null }
+    ];
+    expect(resolveChampionTeamId(m)).toBeNull();
+  });
+
+  it('resolves single-elim final winner', () => {
+    const m: Match[] = [
+      {
+        id: 'w1-0',
+        team1Id: 'a',
+        team2Id: 'b',
+        round: 1,
+        winnerId: 'a',
+        bracketType: 'winners',
+        nextMatchId: 'w2-0'
+      },
+      {
+        id: 'w2-0',
+        team1Id: 'a',
+        team2Id: 'c',
+        round: 2,
+        winnerId: 'a',
+        bracketType: 'winners',
+        nextMatchId: null
+      }
     ];
     expect(resolveChampionTeamId(m)).toBe('a');
   });
@@ -523,6 +555,25 @@ describe('matchToFirestore', () => {
     expect(doc.nextMatchSlot).toBe(1);
     expect(doc.netIndex).toBe(0);
     expect(doc.team1Id).toBe('t1');
+  });
+});
+
+
+describe('isTournamentDecided', () => {
+  it('true when single-elim final has a winner', () => {
+    const m: Match[] = [
+      { id: 'w1-0', team1Id: 'a', team2Id: 'b', round: 1, winnerId: 'a', nextMatchId: 'w2-0' },
+      { id: 'w2-0', team1Id: 'a', team2Id: 'c', round: 2, winnerId: 'c', nextMatchId: null }
+    ];
+    expect(isTournamentDecided('single', m)).toBe(true);
+  });
+
+  it('false while double-elim gf-2 is undecided after lb wins gf-1', () => {
+    const m: Match[] = [
+      { id: 'gf-1', team1Id: 'wb', team2Id: 'lb', round: 2, winnerId: 'lb', nextMatchId: 'gf-2' },
+      { id: 'gf-2', team1Id: 'wb', team2Id: 'lb', round: 3, winnerId: null, nextMatchId: null }
+    ];
+    expect(isTournamentDecided('double', m)).toBe(false);
   });
 });
 

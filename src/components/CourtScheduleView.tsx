@@ -1,8 +1,9 @@
 import React, { useMemo } from 'react';
 import { Match, Team, TournamentRules, SetScore } from '../types';
 import { cn } from '../lib/utils';
-import { Trophy, Layout, Clock, Users } from 'lucide-react';
+import { Layout, Clock, Users } from 'lucide-react';
 import { MatchCard } from './MatchCard';
+import { RecentResults } from './RecentResults';
 import { matchIsOnNet, matchIsWaitingForCourt, isAutoAdvancePlaceholder } from '../lib/matchSchedule';
 import { matchCountsTowardEliminationRecord } from '../lib/tournament/records';
 
@@ -14,6 +15,7 @@ export interface CourtScheduleViewProps {
   isFinished?: boolean;
   rules: TournamentRules;
   highlightTeamId?: string | null;
+  championId?: string | null;
   queueHelpText?: string;
   /** Round robin: standings sorted by record. Casual: alphabetical “activity” only (no ranking). */
   scheduleKind?: 'round-robin' | 'casual';
@@ -29,6 +31,7 @@ export const CourtScheduleView: React.FC<CourtScheduleViewProps> = ({
   isFinished,
   rules,
   highlightTeamId,
+  championId,
   queueHelpText = 'Matches fill nets in order as games finish. Enter scores on active courts below.',
   scheduleKind = 'round-robin',
   targetGamesPerTeam
@@ -45,7 +48,7 @@ export const CourtScheduleView: React.FC<CourtScheduleViewProps> = ({
       .sort((a, b) => (a.round ?? 0) - (b.round ?? 0) || a.id.localeCompare(b.id));
     const done = matches
       .filter(m => m.winnerId && !isAutoAdvancePlaceholder(m))
-      .sort((a, b) => (b.round ?? 0) - (a.round ?? 0));
+      .sort((a, b) => (b.round ?? 0) - (a.round ?? 0) || b.id.localeCompare(a.id));
 
     const st = teams.map(team => {
       const teamMatches = matches.filter(m => m.team1Id === team.id || m.team2Id === team.id);
@@ -216,7 +219,7 @@ export const CourtScheduleView: React.FC<CourtScheduleViewProps> = ({
                 >
                   {team.name}
                   {scheduleKind === 'round-robin' && isFinished && highlightTeamId === team.id && (
-                    <span className="ml-2 text-xs font-semibold text-win">Leader</span>
+                    <span className="ml-2 text-xs font-semibold text-win">Winner</span>
                   )}
                 </td>
                 {scheduleKind === 'casual' && (
@@ -233,55 +236,11 @@ export const CourtScheduleView: React.FC<CourtScheduleViewProps> = ({
         </table>
       </div>
 
-      <div className="space-y-4">
-        <div className="w95-list-header flex items-center gap-2">
-          <Trophy className="h-4 w-4" />
-          Recent results
-        </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {completedMatches.slice(0, 12).map(m => (
-            <div key={m.id} className="flex items-center justify-between py-3 w95-panel">
-              <div className="min-w-0 flex-1">
-                <div className="mb-1 flex flex-wrap items-center gap-2">
-                  <span
-                    className={cn(
-                      'truncate text-xs font-bold',
-                      m.winnerId === m.team1Id ? 'text-ink underline' : 'text-ink-muted'
-                    )}
-                  >
-                    {getTeam(m.team1Id)?.name}
-                  </span>
-                  <span className="text-[10px] text-ink-muted">vs</span>
-                  <span
-                    className={cn(
-                      'truncate text-xs font-bold',
-                      m.winnerId === m.team2Id ? 'text-ink underline' : 'text-ink-muted'
-                    )}
-                  >
-                    {getTeam(m.team2Id)?.name}
-                  </span>
-                </div>
-                <div className="text-[10px] font-bold uppercase text-ink-muted">
-                  {m.sets && m.sets.length > 0
-                    ? m.sets.map(s => `${s.team1}-${s.team2}`).join(', ')
-                    : `${m.score1 ?? 0}-${m.score2 ?? 0} sets`}
-                </div>
-                {m.winnerId && (
-                  <div className="mt-1 text-[10px] font-extrabold uppercase text-win">
-                    Winner: {getTeam(m.winnerId)?.name ?? m.winnerId}
-                  </div>
-                )}
-              </div>
-              <Trophy className="ml-2 h-4 w-4 shrink-0 opacity-20" />
-            </div>
-          ))}
-          {completedMatches.length === 0 && (
-            <div className="col-span-full rounded-lg border border-dashed border-white/15 p-8 text-center text-xs font-bold text-ink-muted w95-inset">
-              No finished matches yet
-            </div>
-          )}
-        </div>
-      </div>
+      <RecentResults
+        matches={completedMatches}
+        teams={teams}
+        championId={championId ?? highlightTeamId}
+      />
     </div>
   );
 };
