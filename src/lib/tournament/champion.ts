@@ -21,7 +21,10 @@ function singleElimFinal(matches: Match[]): Match | null {
 }
 
 /** Resolve tournament champion team id from bracket state. */
-export function resolveChampionTeamId(matches: Match[]): string | null {
+export function resolveChampionTeamId(
+  matches: Match[],
+  format?: TournamentFormat
+): string | null {
   const gf2 = matches.find(m => m.id === 'gf-2');
   if (isRealWinner(gf2?.winnerId)) return gf2!.winnerId!;
 
@@ -33,7 +36,7 @@ export function resolveChampionTeamId(matches: Match[]): string | null {
   }
 
   // Double elim: only grand finals decide the champion — not the winners-bracket final.
-  if (hasDoubleElimGrandFinals(matches)) {
+  if (hasDoubleElimGrandFinals(matches) || format === 'double') {
     return null;
   }
 
@@ -49,7 +52,7 @@ export function isTournamentDecided(format: TournamentFormat, matches: Match[]):
     return matches.length > 0 && matches.every(m => m.winnerId);
   }
   if (format === 'single' || format === 'double') {
-    return resolveChampionTeamId(matches) !== null;
+    return resolveChampionTeamId(matches, format) !== null;
   }
   return false;
 }
@@ -89,5 +92,5 @@ export function resolveDisplayChampion(
     return byId(sorted[0]!.winnerId);
   }
 
-  return byId(resolveChampionTeamId(matches));
+  return byId(resolveChampionTeamId(matches, format));
 }

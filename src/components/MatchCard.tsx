@@ -130,7 +130,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
 
   return (
     <div className="match-card w-full">
-      {showNetBadge && matchIsOnNet(match) && !match.winnerId && (
+      {showNetBadge && matchIsOnNet(match) && !match.winnerId && typeof match.netIndex === 'number' && (
         <div className="mb-2 flex justify-end">
           <div className="w95-inset px-2 py-0.5 text-[10px] font-semibold text-ink-secondary">
             NET {match.netIndex + 1}
@@ -150,7 +150,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
           ) : (
             <>
               <p className="text-[10px] font-extrabold uppercase tracking-wide text-win">Match winner</p>
-              <p className="mt-0.5 text-base font-bold text-ink">{winnerTeam!.name}</p>
+              <p className="mt-0.5 text-base font-bold text-ink">{winnerTeam?.name ?? 'Unknown'}</p>
             </>
           )}
         </div>

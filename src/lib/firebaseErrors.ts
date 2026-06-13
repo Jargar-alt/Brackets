@@ -4,6 +4,9 @@ export function formatFirebaseError(error: unknown): string {
     if (message.includes('permission-denied') || message.includes('Missing or insufficient permissions')) {
       return 'Permission denied. Sign in with Google as the tournament creator to edit.';
     }
+    if (message.includes('unavailable') || message.includes('network')) {
+      return 'Network error — check your connection and try again.';
+    }
     if (message.includes('index')) {
       return 'Firestore index is still building. Try again in a minute.';
     }

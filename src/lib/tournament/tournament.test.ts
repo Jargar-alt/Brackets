@@ -29,6 +29,29 @@ import type { Match, Team, TournamentRules } from '../../types';
 const teams4 = (n: number): Team[] =>
   Array.from({ length: n }, (_, i) => ({ id: `t${i}`, name: `T${i}` }));
 
+/** Mirror App score flow for elimination brackets in tests. */
+function applyMatchResult(matches: Match[], matchId: string, winnerId: string): Match[] {
+  const copy = matches.map(m => ({ ...m }));
+  const idx = copy.findIndex(m => m.id === matchId);
+  if (idx === -1) throw new Error(`missing match ${matchId}`);
+  const prev = copy[idx]!;
+  const loserId =
+    prev.team1Id === winnerId ? prev.team2Id : prev.team2Id === winnerId ? prev.team1Id : null;
+  const scored: Match = {
+    ...prev,
+    winnerId,
+    score1: prev.team1Id === winnerId ? 1 : 0,
+    score2: prev.team2Id === winnerId ? 1 : 0
+  };
+  copy[idx] = scored;
+
+  propagateWinnerToNext(copy, scored, matchId, winnerId);
+  if (prev.loserMatchId && loserId) {
+    propagateLoserToBracket(copy, prev, matchId, loserId);
+  }
+  return autoAdvanceByes(copy);
+}
+
 const baseRules: TournamentRules = {
   pointsToWin: 25,
   bestOf: 1,
@@ -420,6 +443,99 @@ describe('generateDoubleElimination', () => {
     const l15 = m0.find(x => x.id === 'l1-5');
     expect(l15?.team1Id).toBe('la');
     expect(l15?.team2Id).toBe('lb');
+  });
+});
+
+describe('double elim end-to-end', () => {
+  it('stays undecided through winners-bracket final', () => {
+    let m = autoAdvanceByes(generateDoubleElimination(teams4(4)));
+    m = applyMatchResult(m, 'w1-0', 't0');
+    m = applyMatchResult(m, 'w1-1', 't2');
+    expect(isTournamentDecided('double', m)).toBe(false);
+    expect(resolveChampionTeamId(m, 'double')).toBeNull();
+
+    m = applyMatchResult(m, 'w2-0', 't0');
+    expect(isTournamentDecided('double', m)).toBe(false);
+    expect(resolveChampionTeamId(m, 'double')).toBeNull();
+
+    const gf1 = m.find(x => x.id === 'gf-1');
+    expect(gf1?.team1Id).toBe('t0');
+    expect(gf1?.team2Id).toBeNull();
+  });
+
+  it('lb comeback wins gf-2 after bracket reset', () => {
+    let m = autoAdvanceByes(generateDoubleElimination(teams4(4)));
+    m = applyMatchResult(m, 'w1-0', 't0');
+    m = applyMatchResult(m, 'w1-1', 't2');
+    m = applyMatchResult(m, 'w2-0', 't0');
+    m = applyMatchResult(m, 'l1-0', 't1');
+    m = applyMatchResult(m, 'l2-0', 't1');
+
+    const gf1 = m.find(x => x.id === 'gf-1')!;
+    expect(gf1.team1Id).toBe('t0');
+    expect(gf1.team2Id).toBe('t1');
+
+    m = applyMatchResult(m, 'gf-1', 't1');
+    expect(isTournamentDecided('double', m)).toBe(false);
+    expect(resolveChampionTeamId(m, 'double')).toBeNull();
+
+    const gf2 = m.find(x => x.id === 'gf-2')!;
+    expect(gf2.team1Id).toBe('t0');
+    expect(gf2.team2Id).toBe('t1');
+
+    m = applyMatchResult(m, 'gf-2', 't1');
+    expect(isTournamentDecided('double', m)).toBe(true);
+    expect(resolveChampionTeamId(m, 'double')).toBe('t1');
+    expect(countBracketLosses('t0', m)).toBe(2);
+    expect(countBracketLosses('t1', m)).toBe(1);
+  });
+
+  it('wb champ wins gf-1 outright without gf-2', () => {
+    let m = autoAdvanceByes(generateDoubleElimination(teams4(4)));
+    m = applyMatchResult(m, 'w1-0', 't0');
+    m = applyMatchResult(m, 'w1-1', 't2');
+    m = applyMatchResult(m, 'w2-0', 't0');
+    m = applyMatchResult(m, 'l1-0', 't1');
+    m = applyMatchResult(m, 'l2-0', 't1');
+    m = applyMatchResult(m, 'gf-1', 't0');
+
+    expect(isTournamentDecided('double', m)).toBe(true);
+    expect(resolveChampionTeamId(m, 'double')).toBe('t0');
+    expect(m.find(x => x.id === 'gf-2')?.team1Id).toBeNull();
+  });
+
+  it('8-team bracket never crowns after wb final alone', () => {
+    let m = autoAdvanceByes(generateDoubleElimination(teams4(8)));
+    for (const match of m.filter(x => x.id.startsWith('w1-'))) {
+      m = applyMatchResult(m, match.id, match.team1Id!);
+    }
+    for (const match of m.filter(x => x.id.startsWith('w2-'))) {
+      if (match.team1Id && match.team2Id) {
+        m = applyMatchResult(m, match.id, match.team1Id);
+      }
+    }
+    const wbFinal = m.find(x => x.id === 'w3-0');
+    if (wbFinal?.team1Id && wbFinal.team2Id) {
+      m = applyMatchResult(m, 'w3-0', wbFinal.team1Id);
+    }
+    expect(isTournamentDecided('double', m)).toBe(false);
+    expect(resolveChampionTeamId(m, 'double')).toBeNull();
+  });
+
+  it('format double guard blocks single-elim fallback without gf-1', () => {
+    const m: Match[] = [
+      {
+        id: 'w2-0',
+        team1Id: 'a',
+        team2Id: 'b',
+        round: 2,
+        winnerId: 'a',
+        bracketType: 'winners',
+        nextMatchId: null
+      }
+    ];
+    expect(resolveChampionTeamId(m, 'double')).toBeNull();
+    expect(resolveChampionTeamId(m, 'single')).toBe('a');
   });
 });
 

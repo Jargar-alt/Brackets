@@ -11,6 +11,9 @@ import { RecentResults } from '../components/RecentResults';
 import { matchIsOnNet, matchIsWaitingForCourt, isAutoAdvancePlaceholder } from '../lib/matchSchedule';
 import { resolveDisplayChampion } from '../lib/tournament/champion';
 import { matchCountsTowardEliminationRecord } from '../lib/tournament/records';
+import { sanitizeRules } from '../lib/tournament/rules';
+import { normalizeActiveNets } from '../lib/persistence';
+import { formatFirebaseError } from '../lib/firebaseErrors';
 
 const FORMAT_LABEL: Record<TournamentFormat, string> = {
   single: 'Single elimination',
@@ -21,18 +24,7 @@ const FORMAT_LABEL: Record<TournamentFormat, string> = {
 };
 
 function defaultRules(): TournamentRules {
-  return {
-    pointsToWin: 25,
-    bestOf: 3,
-    thirdSetTo: 15,
-    serveToWin: false,
-    winByTwo: true,
-    gamesPerTeam: 2,
-    poolGroups: 1,
-    winnerStays: true,
-    maxConsecutiveWins: 3,
-    onMaxWins: 'other-stays'
-  };
+  return sanitizeRules(null);
 }
 
 export function LiveResultsView() {
@@ -48,38 +40,71 @@ export function LiveResultsView() {
   const [activeNets, setActiveNets] = useState<Record<number, string | null>>({});
   const [rules, setRules] = useState<TournamentRules>(defaultRules);
   const [missing, setMissing] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!db || !tournamentId) {
       setMissing(true);
       return;
     }
+    setLoadError(null);
     const tRef = doc(db, 'tournaments', tournamentId);
-    const unsubT = onSnapshot(tRef, snap => {
-      if (!snap.exists()) {
-        setMissing(true);
-        return;
+    const unsubT = onSnapshot(
+      tRef,
+      snap => {
+        if (!snap.exists()) {
+          setMissing(true);
+          return;
+        }
+        setMissing(false);
+        const d = snap.data();
+        setName((d.name as string) || 'Tournament');
+        const f = d.format as TournamentFormat;
+        const ok: TournamentFormat[] = ['single', 'double', 'pool', 'casual', 'winners-list'];
+        setFormat(ok.includes(f) ? f : 'single');
+        setIsStarted(!!d.isStarted);
+        setIsFinished(!!d.isFinished);
+        setNumNets(typeof d.numNets === 'number' && d.numNets > 0 ? d.numNets : 1);
+        setQueue(Array.isArray(d.queue) ? d.queue : []);
+        setActiveNets(normalizeActiveNets(d.activeNets as Record<string, string | null>));
+        setRules(sanitizeRules(d.rules as TournamentRules | undefined));
+      },
+      err => {
+        console.error('[LiveResults] tournament subscription failed:', err);
+        setLoadError(formatFirebaseError(err));
       }
-      setMissing(false);
-      const d = snap.data();
-      setName((d.name as string) || 'Tournament');
-      const f = d.format as TournamentFormat;
-      const ok: TournamentFormat[] = ['single', 'double', 'pool', 'casual', 'winners-list'];
-      setFormat(ok.includes(f) ? f : 'single');
-      setIsStarted(!!d.isStarted);
-      setIsFinished(!!d.isFinished);
-      setNumNets(typeof d.numNets === 'number' ? d.numNets : 1);
-      setQueue(Array.isArray(d.queue) ? d.queue : []);
-      setActiveNets((d.activeNets as Record<number, string | null>) || {});
-      setRules({ ...defaultRules(), ...(d.rules as object) } as TournamentRules);
-    });
+    );
 
-    const unsubTeams = onSnapshot(collection(db, 'tournaments', tournamentId, 'teams'), snap => {
-      setTeams(snap.docs.map(x => x.data() as Team));
-    });
-    const unsubMatches = onSnapshot(collection(db, 'tournaments', tournamentId, 'matches'), snap => {
-      setMatches(snap.docs.map(x => x.data() as Match));
-    });
+    const unsubTeams = onSnapshot(
+      collection(db, 'tournaments', tournamentId, 'teams'),
+      snap => {
+        setTeams(
+          snap.docs.map(x => {
+            const data = x.data() as Team;
+            return { ...data, id: data.id ?? x.id };
+          })
+        );
+      },
+      err => {
+        console.error('[LiveResults] teams subscription failed:', err);
+        setLoadError(formatFirebaseError(err));
+      }
+    );
+    const unsubMatches = onSnapshot(
+      collection(db, 'tournaments', tournamentId, 'matches'),
+      snap => {
+        setMatches(
+          snap.docs.map(x => {
+            const data = x.data() as Match;
+            return { ...data, id: data.id ?? x.id };
+          })
+        );
+      },
+      err => {
+        console.error('[LiveResults] matches subscription failed:', err);
+        setLoadError(formatFirebaseError(err));
+      }
+    );
 
     return () => {
       unsubT();
@@ -175,6 +200,18 @@ export function LiveResultsView() {
             Director setup
           </Link>
         </div>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="min-h-screen bg-canvas p-8 text-center">
+        <p className="text-lg font-bold text-ink">Could not load tournament</p>
+        <p className="mt-2 text-sm text-ink-secondary">{loadError}</p>
+        <Link to="/" className="mt-4 inline-block text-accent underline">
+          <Home className="mb-1 inline h-4 w-4" /> Back home
+        </Link>
       </div>
     );
   }
