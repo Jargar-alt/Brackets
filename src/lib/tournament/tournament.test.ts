@@ -13,6 +13,7 @@ import {
   bracketLeafSeedOrder
 } from './generate';
 import { assignNets, assignRoundRobinNets } from './nets';
+import { matchIsOnNet, matchIsWaitingForCourt } from '../matchSchedule';
 import {
   parseBracketMatchIndex,
   propagateWinnerToNext,
@@ -23,7 +24,6 @@ import {
 import { matchOutcomeFromSets, isValidCompletedSet } from './scoring';
 import { resolveChampionTeamId, isTournamentDecided } from './champion';
 import { countBracketLosses } from './records';
-import { matchIsOnNet, matchIsWaitingForCourt } from '../matchSchedule';
 import type { Match, Team, TournamentRules } from '../../types';
 
 const teams4 = (n: number): Team[] =>
@@ -232,6 +232,33 @@ describe('propagateWinnerToNext', () => {
     expect(tournamentComplete).toBe(true);
   });
 
+  it('repairs gf-2 stuck with bye sentinel once teams are known', () => {
+    const m: Match[] = [
+      {
+        id: 'gf-1',
+        team1Id: 'wb',
+        team2Id: 'lb',
+        round: 3,
+        winnerId: 'lb',
+        nextMatchId: 'gf-2'
+      },
+      {
+        id: 'gf-2',
+        team1Id: 'wb',
+        team2Id: 'lb',
+        round: 4,
+        winnerId: BYE_SENTINEL,
+        score1: 0,
+        score2: 0
+      }
+    ];
+    const fixed = autoAdvanceByes(m);
+    const gf2 = fixed.find(x => x.id === 'gf-2');
+    expect(gf2?.winnerId).toBeNull();
+    expect(gf2?.team1Id).toBe('wb');
+    expect(gf2?.team2Id).toBe('lb');
+  });
+
   it('sends both teams to gf-2 when LB (team2) wins gf-1', () => {
     const matches: Match[] = [
       { id: 'gf-1', team1Id: 'wb', team2Id: 'lb', round: 3, bracketType: 'winners', nextMatchId: 'gf-2' },
@@ -245,6 +272,7 @@ describe('propagateWinnerToNext', () => {
     const gf2 = copy.find(m => m.id === 'gf-2');
     expect(gf2?.team1Id).toBe('wb');
     expect(gf2?.team2Id).toBe('lb');
+    expect(gf2?.winnerId).toBeNull();
   });
 });
 
@@ -383,6 +411,14 @@ describe('generateDoubleElimination', () => {
     expect(m.some(x => x.id === 'gf-2')).toBe(true);
   });
 
+  it('does not auto-bye grand finals before they are played', () => {
+    const m = autoAdvanceByes(generateDoubleElimination(teams4(4)));
+    const gf1 = m.find(x => x.id === 'gf-1');
+    const gf2 = m.find(x => x.id === 'gf-2');
+    expect(gf1?.winnerId).not.toBe(BYE_SENTINEL);
+    expect(gf2?.winnerId).not.toBe(BYE_SENTINEL);
+  });
+
   it('only assigns loserMatchId to existing losers bracket matches (sorted WB order)', () => {
     const ids = new Set<string>();
     for (const n of [4, 8, 16]) {
@@ -482,8 +518,13 @@ describe('double elim end-to-end', () => {
     const gf2 = m.find(x => x.id === 'gf-2')!;
     expect(gf2.team1Id).toBe('t0');
     expect(gf2.team2Id).toBe('t1');
+    expect(gf2.winnerId).toBeNull();
 
-    m = applyMatchResult(m, 'gf-2', 't1');
+    const withNets = assignNets(m, 2, 'double');
+    const gf2Net = withNets.find(x => x.id === 'gf-2')!;
+    expect(matchIsOnNet(gf2Net) || matchIsWaitingForCourt(gf2Net)).toBe(true);
+
+    m = applyMatchResult(withNets, 'gf-2', 't1');
     expect(isTournamentDecided('double', m)).toBe(true);
     expect(resolveChampionTeamId(m, 'double')).toBe('t1');
     expect(countBracketLosses('t0', m)).toBe(2);

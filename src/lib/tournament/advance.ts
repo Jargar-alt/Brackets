@@ -204,6 +204,7 @@ export function autoAdvanceByes(matches: Match[]): Match[] {
 
     for (let i = 0; i < updated.length; i++) {
       const m = updated[i];
+      if (isGrandFinalMatch(m.id)) continue;
       if (m.winnerId) continue;
       const hasTeam1 = Boolean(m.team1Id);
       const hasTeam2 = Boolean(m.team2Id);
@@ -241,10 +242,33 @@ export function autoAdvanceByes(matches: Match[]): Match[] {
       }
     }
   }
-  return updated;
+
+  return updated.map(m => {
+    if (
+      isGrandFinalMatch(m.id) &&
+      m.team1Id &&
+      m.team2Id &&
+      m.winnerId === BYE_SENTINEL
+    ) {
+      return clearMatchResultFields(m);
+    }
+    return m;
+  });
 }
 
-export { BYE_SENTINEL };
+function isGrandFinalMatch(matchId: string): boolean {
+  return matchId === 'gf-1' || matchId === 'gf-2';
+}
+
+function clearMatchResultFields(m: Match): Match {
+  const next: Match = { ...m, winnerId: null };
+  delete next.score1;
+  delete next.score2;
+  delete next.sets;
+  delete next.byeWalkover;
+  delete next.netIndex;
+  return next;
+}
 
 export function propagateWinnerToNext(
   updatedMatches: Match[],
@@ -295,14 +319,19 @@ export function propagateWinnerToNext(
     }
   } else if (matchId === 'gf-1') {
     if (winnerId === currentMatch.team2Id) {
-      nextMatch.team1Id = currentMatch.team1Id;
-      nextMatch.team2Id = currentMatch.team2Id;
+      updatedMatches[nextMatchIdx] = clearMatchResultFields({
+        ...nextMatch,
+        team1Id: currentMatch.team1Id,
+        team2Id: currentMatch.team2Id
+      });
     } else {
       tournamentComplete = true;
     }
   }
 
-  updatedMatches[nextMatchIdx] = nextMatch;
+  if (matchId !== 'gf-1') {
+    updatedMatches[nextMatchIdx] = nextMatch;
+  }
   return { tournamentComplete };
 }
 
@@ -344,3 +373,5 @@ export function propagateLoserToBracket(
 
   updatedMatches[loserMatchIdx] = loserMatch;
 }
+
+export { BYE_SENTINEL };
