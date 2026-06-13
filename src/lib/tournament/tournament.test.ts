@@ -873,6 +873,14 @@ describe('winnersList queue', () => {
     const matches = [live(0, 'a', 'b')];
     expect(sanitizeWinnersQueue(queue, matches)).toEqual(['c']);
   });
+
+  it('reserved ids prevent double assignment before state updates', () => {
+    const queue = ['c', 'd', 'e'];
+    const pulled = pullTeamsFromWinnersQueue(queue, [], 1, ['c']);
+    expect(pulled.teamIds).toEqual(['d']);
+    const second = pullTeamsFromWinnersQueue(pulled.remainingQueue, [], 1, ['c', 'd']);
+    expect(second.teamIds).toEqual(['e']);
+  });
 });
 
 describe('assignNets double elimination', () => {

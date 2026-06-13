@@ -175,24 +175,10 @@ export const WinnersListView: React.FC<WinnersListViewProps> = ({
                   <span className="text-[10px] font-bold uppercase tracking-wider text-ink">Net {i + 1}</span>
                   {match ? (
                     <div className="flex items-center gap-2">
-                      {rules.winnerStays && rules.maxConsecutiveWins && (
-                        <div className="flex gap-1">
-                          {Array.from({ length: rules.maxConsecutiveWins }).map((_, idx) => {
-                            const team1 = getTeam(match.team1Id);
-                            const team2 = getTeam(match.team2Id);
-                            const t1Wins = team1?.consecutiveWins || 0;
-                            const t2Wins = team2?.consecutiveWins || 0;
-                            return (
-                              <div 
-                                key={idx} 
-                                className={cn(
-                                  "w-1.5 h-1.5 rounded-full transition-colors",
-                                  idx < Math.max(t1Wins, t2Wins) ? "bg-accent" : "bg-surface-overlay"
-                                )}
-                              />
-                            );
-                          })}
-                        </div>
+                      {rules.winnerStays !== false && (
+                        <span className="text-[10px] font-bold uppercase text-ink-muted">
+                          Streak {Math.max(getTeam(match.team1Id)?.consecutiveWins || 0, getTeam(match.team2Id)?.consecutiveWins || 0)}
+                        </span>
                       )}
                       <span className="flex items-center gap-1 text-[10px] font-bold text-live uppercase">
                         <Clock className="w-3 h-3" /> Live

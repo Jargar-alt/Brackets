@@ -21,7 +21,7 @@ export function sanitizeWinnersQueue(queue: string[], matches: Match[]): string[
 
 /**
  * Pull up to `count` teams from the queue, skipping anyone already on a net,
- * reserved for the upcoming match, or already picked in this batch.
+ * reserved/locked for assignment elsewhere, or already picked in this batch.
  */
 export function pullTeamsFromWinnersQueue(
   queue: string[],

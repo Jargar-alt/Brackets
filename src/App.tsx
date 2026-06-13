@@ -56,7 +56,8 @@ import { DEFAULT_RULES, sanitizeRules } from './lib/tournament/rules';
 import { getChangedMatches, matchesSyncEqual, teamsSyncEqual } from './lib/matchSync';
 import {
   pullTeamsFromWinnersQueue,
-  sanitizeWinnersQueue
+  sanitizeWinnersQueue,
+  winnersListActiveTeamIds
 } from './lib/tournament/winnersList';
 
 const DEFAULT_LOCAL_TEAMS: Team[] = [
@@ -153,6 +154,8 @@ export default function App() {
   const [banner, setBanner] = useState<BannerMessage>(null);
   const reconcileKeyRef = useRef<string | null>(null);
   const suppressCloudSyncRef = useRef(false);
+  /** Teams assigned to a net in-flight (before React/Firestore catches up). */
+  const winnersListLockedTeamsRef = useRef<Set<string>>(new Set());
   const scoringMatchesRef = useRef<Set<string>>(new Set());
   const teamNameTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const syncRef = useRef({ isCreator, isStarted, isFinished, format, numNets });
@@ -167,6 +170,29 @@ export default function App() {
     syncRef.current = { ...syncRef.current, isFinished: false };
     setIsFinished(false);
   }, []);
+
+  const lockWinnersListTeams = useCallback((...ids: (string | null | undefined)[]) => {
+    for (const id of ids) {
+      if (id) winnersListLockedTeamsRef.current.add(id);
+    }
+  }, []);
+
+  const pullWinnersQueue = useCallback(
+    (queueIn: string[], matchesIn: Match[], count: number, reserved: Iterable<string> = []) =>
+      pullTeamsFromWinnersQueue(queueIn, matchesIn, count, [
+        ...reserved,
+        ...winnersListLockedTeamsRef.current
+      ]),
+    []
+  );
+
+  useEffect(() => {
+    if (format !== 'winners-list') return;
+    const active = winnersListActiveTeamIds(matches);
+    for (const id of winnersListLockedTeamsRef.current) {
+      if (active.has(id)) winnersListLockedTeamsRef.current.delete(id);
+    }
+  }, [format, matches]);
 
   useEffect(() => {
     const timers = teamNameTimersRef.current;
@@ -772,6 +798,7 @@ export default function App() {
     setInviteCode('');
     setCloudSyncing(false);
     reconcileKeyRef.current = null;
+    winnersListLockedTeamsRef.current.clear();
     clearPersistedTournamentProgress();
 
     if (!tid || !db) {
@@ -830,7 +857,7 @@ export default function App() {
           const currentMatch = workingMatches.find(m => m.id === currentMatchId);
 
           if (!currentMatchId || currentMatch?.winnerId) {
-            const { teamIds, remainingQueue } = pullTeamsFromWinnersQueue(newQueue, workingMatches, 2);
+            const { teamIds, remainingQueue } = pullWinnersQueue(newQueue, workingMatches, 2);
             newQueue = remainingQueue;
             if (teamIds.length >= 2) {
               const matchId = `net-${i}-${Date.now()}`;
@@ -844,6 +871,7 @@ export default function App() {
               newActiveNets[i] = matchId;
               matchesToAdd.push(newMatch);
               workingMatches.push(newMatch);
+              lockWinnersListTeams(teamIds[0], teamIds[1]);
 
               updatedTeams = updatedTeams.map(t => {
                 if (t.id === teamIds[0] || t.id === teamIds[1]) return { ...t, consecutiveWins: 0 };
@@ -851,10 +879,11 @@ export default function App() {
               });
             }
           } else if (currentMatch && !currentMatch.winnerId && !currentMatch.team2Id) {
-            const { teamIds, remainingQueue } = pullTeamsFromWinnersQueue(newQueue, workingMatches, 1);
+            const { teamIds, remainingQueue } = pullWinnersQueue(newQueue, workingMatches, 1);
             newQueue = remainingQueue;
             if (teamIds.length >= 1) {
               const t2Id = teamIds[0]!;
+              lockWinnersListTeams(t2Id);
               const updatedMatch = { ...currentMatch, team2Id: t2Id };
               const idx = matchesToAdd.findIndex(m => m.id === currentMatch.id);
               if (idx !== -1) matchesToAdd[idx] = updatedMatch;
@@ -989,30 +1018,26 @@ export default function App() {
 
       updatedMatches[matchIdx] = currentMatch;
       let newQueue = sanitizeWinnersQueue([...queue], updatedMatches);
-      let nextTeam1Id: string | null = winnerId;
+      let nextTeam1Id: string | null = null;
       let nextTeam2Id: string | null = null;
 
       const updatedWinnerWins = (winnerTeam?.consecutiveWins || 0) + 1;
-      const maxWins = rules.maxConsecutiveWins || 3;
-      const reachedMax = updatedWinnerWins >= maxWins;
+      let t1Wins = 0;
 
-      if (!rules.winnerStays || (reachedMax && rules.onMaxWins === 'both-off')) {
-        const pulled = pullTeamsFromWinnersQueue(newQueue, updatedMatches, 2);
+      if (rules.winnerStays) {
+        nextTeam1Id = winnerId;
+        const pulled = pullWinnersQueue(newQueue, updatedMatches, 1, [winnerId]);
+        newQueue = pulled.remainingQueue;
+        nextTeam2Id = pulled.teamIds[0] ?? null;
+        t1Wins = updatedWinnerWins;
+      } else {
+        const pulled = pullWinnersQueue(newQueue, updatedMatches, 2);
         newQueue = pulled.remainingQueue;
         nextTeam1Id = pulled.teamIds[0] ?? null;
         nextTeam2Id = pulled.teamIds[1] ?? null;
-      } else if (reachedMax && rules.onMaxWins === 'other-stays') {
-        nextTeam1Id = loserId;
-        const pulled = pullTeamsFromWinnersQueue(newQueue, updatedMatches, 1, [loserId]);
-        newQueue = pulled.remainingQueue;
-        nextTeam2Id = pulled.teamIds[0] ?? null;
-      } else {
-        const pulled = pullTeamsFromWinnersQueue(newQueue, updatedMatches, 1, [winnerId]);
-        newQueue = pulled.remainingQueue;
-        nextTeam2Id = pulled.teamIds[0] ?? null;
       }
 
-      newQueue = sanitizeWinnersQueue(newQueue, updatedMatches);
+      lockWinnersListTeams(nextTeam1Id, nextTeam2Id);
 
       if (nextTeam1Id) {
         const nextMatchId = `net-${netIndex}-${Date.now()}`;
@@ -1025,7 +1050,7 @@ export default function App() {
         };
 
         const nextMatches = [...updatedMatches, nextMatch];
-        const t1Wins = nextTeam1Id === winnerId && !reachedMax ? updatedWinnerWins : 0;
+        newQueue = sanitizeWinnersQueue(newQueue, nextMatches);
         setMatches(nextMatches);
         setQueue(newQueue);
         setActiveNets({ ...activeNets, [netIndex]: nextMatchId });
@@ -1076,9 +1101,7 @@ export default function App() {
         setActiveNets({ ...activeNets, [netIndex]: null });
         setTeams(prev =>
           prev.map(t => {
-            if (t.id === winnerId) {
-              return { ...t, consecutiveWins: reachedMax ? 0 : updatedWinnerWins };
-            }
+            if (t.id === winnerId) return { ...t, consecutiveWins: 0 };
             if (t.id === loserId) return { ...t, consecutiveWins: 0 };
             return t;
           })
@@ -1092,7 +1115,7 @@ export default function App() {
                 matchToFirestore(currentMatch)
               );
               await updateDoc(doc(db, 'tournaments', tournamentId, 'teams', winnerId), {
-                consecutiveWins: reachedMax ? 0 : updatedWinnerWins
+                consecutiveWins: 0
               });
               await updateDoc(doc(db, 'tournaments', tournamentId, 'teams', loserId), {
                 consecutiveWins: 0
@@ -1198,7 +1221,9 @@ export default function App() {
     queue,
     activeNets,
     markTournamentFinished,
-    markTournamentOpen
+    markTournamentOpen,
+    pullWinnersQueue,
+    lockWinnersListTeams
   ]);
 
   const finishTournament = async () => {
@@ -1564,76 +1589,38 @@ export default function App() {
                     </div>
 
                     {format === 'winners-list' && (
-                      <>
-                        <button
-                          onClick={() => updateRules({ winnerStays: !rules.winnerStays })}
-                          className="flex items-center gap-3 group"
-                        >
-                          <div className={cn(
-                            "w-12 h-6 rounded-full transition-all relative",
-                            rules.winnerStays ? "bg-win shadow-inner ring-1 ring-win/40" : "bg-surface-overlay"
-                          )}>
-                            <div className={cn(
-                              "absolute top-1 w-4 h-4 bg-white rounded-full transition-all",
-                              rules.winnerStays ? "left-7" : "left-1"
-                            )} />
-                          </div>
-                          <div className="text-left">
-                            <div className="text-sm font-bold text-ink">Winner Stays</div>
-                            <div className="text-xs text-ink-secondary">Winners stay on the net for next game.</div>
-                          </div>
-                        </button>
-
-                        {rules.winnerStays && (
-                          <div className="space-y-4 pt-4 border-t border-white/8">
-                            <label className="block text-sm font-bold text-ink">Max Consecutive Wins</label>
-                            <div className="flex gap-2">
-                              {[2, 3, 4, 5].map((w) => (
-                                <button
-                                  key={w}
-                                  onClick={() => updateRules({ maxConsecutiveWins: w })}
-                                  className={cn(
-                                    "px-3 py-1.5 rounded-lg text-xs font-bold border transition-all",
-                                    rules.maxConsecutiveWins === w 
-                                      ? "chip-active border-accent/50 bg-accent/20 text-accent" 
-                                      : "chip border-white/14 bg-surface text-ink hover:border-white/24"
-                                  )}
-                                >
-                                  {w} Wins
-                                </button>
-                              ))}
-                            </div>
-                            
-                            <div className="space-y-2">
-                              <label className="block text-[10px] font-bold text-ink-muted uppercase">After Max Wins:</label>
-                              <div className="flex gap-2">
-                                <button
-                                  onClick={() => updateRules({ onMaxWins: 'other-stays' })}
-                                  className={cn(
-                                    "flex-1 px-3 py-2 rounded-lg text-[10px] font-bold border transition-all",
-                                    rules.onMaxWins === 'other-stays' 
-                                      ? "chip-active border-accent/50 bg-accent/20 text-accent" 
-                                      : "chip border-white/14 bg-surface text-ink hover:border-white/24"
-                                  )}
-                                >
-                                  Other Team Stays
-                                </button>
-                                <button
-                                  onClick={() => updateRules({ onMaxWins: 'both-off' })}
-                                  className={cn(
-                                    "flex-1 px-3 py-2 rounded-lg text-[10px] font-bold border transition-all",
-                                    rules.onMaxWins === 'both-off' 
-                                      ? "chip-active border-accent/50 bg-accent/20 text-accent" 
-                                      : "chip border-white/14 bg-surface text-ink hover:border-white/24"
-                                  )}
-                                >
-                                  Both Teams Off
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                      </>
+                      <div className="sm:col-span-2 space-y-3 pt-4 border-t border-white/8">
+                        <label className="block text-sm font-bold text-ink">After each game</label>
+                        <p className="text-xs text-ink-secondary">
+                          Who stays on the court when a match ends?
+                        </p>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => updateRules({ winnerStays: true })}
+                            className={cn(
+                              'flex-1 rounded-lg border px-3 py-2.5 text-sm font-bold transition-all',
+                              rules.winnerStays !== false
+                                ? 'chip-active border-accent/50 bg-accent/20 text-accent'
+                                : 'chip border-white/14 bg-surface text-ink hover:border-white/24'
+                            )}
+                          >
+                            Winner stays
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => updateRules({ winnerStays: false })}
+                            className={cn(
+                              'flex-1 rounded-lg border px-3 py-2.5 text-sm font-bold transition-all',
+                              rules.winnerStays === false
+                                ? 'chip-active border-accent/50 bg-accent/20 text-accent'
+                                : 'chip border-white/14 bg-surface text-ink hover:border-white/24'
+                            )}
+                          >
+                            Both teams off
+                          </button>
+                        </div>
+                      </div>
                     )}
                     <div className="sm:col-span-2 pt-4 border-t border-white/8 space-y-4">
                       <label className="block text-sm font-bold text-ink">Number of Nets</label>
