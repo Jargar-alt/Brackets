@@ -11,6 +11,7 @@ import { RecentResults } from '../components/RecentResults';
 import { matchIsOnNet, matchIsWaitingForCourt, isAutoAdvancePlaceholder } from '../lib/matchSchedule';
 import { resolveDisplayChampion } from '../lib/tournament/champion';
 import { matchCountsTowardEliminationRecord } from '../lib/tournament/records';
+import { sanitizeWinnersQueue } from '../lib/tournament/winnersList';
 import { sanitizeRules } from '../lib/tournament/rules';
 import { normalizeActiveNets } from '../lib/persistence';
 import { formatFirebaseError } from '../lib/firebaseErrors';
@@ -122,14 +123,15 @@ export function LiveResultsView() {
     return '—';
   };
 
-  const winnersQueuePairs = useMemo(() => {
+  const winnersListSanitizedQueue = useMemo(() => {
     if (format !== 'winners-list') return [];
-    const pairs: { a: string; b: string }[] = [];
-    for (let i = 0; i + 1 < queue.length; i += 2) {
-      pairs.push({ a: queue[i]!, b: queue[i + 1]! });
-    }
-    return pairs;
-  }, [format, queue]);
+    return sanitizeWinnersQueue(queue, matches);
+  }, [format, queue, matches]);
+
+  const winnersListUpNext = useMemo(
+    () => winnersListSanitizedQueue.slice(0, 3),
+    [winnersListSanitizedQueue]
+  );
 
   const { queuedMatches, recentDone, onCourtByNet } = useMemo(() => {
     const active = matches
@@ -285,22 +287,50 @@ export function LiveResultsView() {
           <section className="w95-panel space-y-3 p-4">
             <div className="w95-list-header -mx-4 -mt-4 mb-2 flex items-center gap-2">
               <Users className="h-4 w-4" />
-              Open play queue
+              On deck
             </div>
-            <p className="text-xs font-bold text-ink-secondary">
-              Waiting for a net: <span className="text-accent">{queue.length}</span> team
-              {queue.length === 1 ? '' : 's'}
+            <p className="text-xs font-semibold text-ink-secondary">
+              Next teams in line — get warm and ready. Matchups form when a court opens.
             </p>
-            <div className="flex flex-wrap gap-2">
-              {queue.slice(0, 24).map(id => (
-                <span key={id} className="rounded-lg border border-white/10 bg-surface-raised px-2 py-1 text-xs font-bold text-ink">
-                  {teamName(id)}
-                </span>
-              ))}
-            </div>
+            {winnersListUpNext.length === 0 ? (
+              <p className="text-sm font-bold text-ink-secondary">No teams on deck right now.</p>
+            ) : (
+              <ol className="space-y-2">
+                {winnersListUpNext.map((id, i) => (
+                  <li
+                    key={id}
+                    className="flex items-center gap-3 rounded-lg border border-white/12 bg-surface-raised px-3 py-2.5"
+                  >
+                    <span
+                      className={cn(
+                        'flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-extrabold',
+                        i === 0
+                          ? 'bg-accent/20 text-accent ring-1 ring-accent/35'
+                          : 'bg-surface-overlay text-ink-secondary'
+                      )}
+                    >
+                      {i + 1}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-bold text-ink">{teamName(id)}</p>
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-ink-muted">
+                        {i === 0 ? 'Up next — prep now' : i === 1 ? 'On deck' : 'Get ready'}
+                      </p>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            )}
+            {winnersListSanitizedQueue.length > 3 && (
+              <p className="text-[10px] font-semibold text-ink-muted">
+                +{winnersListSanitizedQueue.length - 3} more team
+                {winnersListSanitizedQueue.length - 3 === 1 ? '' : 's'} still in line
+              </p>
+            )}
           </section>
         )}
 
+        {format !== 'winners-list' && (
         <section className="w95-panel space-y-4 p-4">
           <div className="w95-list-header -mx-4 -mt-4 mb-2 flex items-center gap-2">
             <Clock className="h-4 w-4" />
@@ -309,32 +339,10 @@ export function LiveResultsView() {
           <p className="text-xs font-semibold text-ink-secondary">
             Next matches waiting for a court — be ready when your team appears.
           </p>
-          {format === 'winners-list' && winnersQueuePairs.length > 0 && (
-            <div className="mb-4 space-y-2">
-              <p className="text-[10px] font-bold uppercase text-ink-secondary">From waiting list (order)</p>
-              <ol className="space-y-2">
-                {winnersQueuePairs.slice(0, 15).map((p, i) => (
-                  <li
-                    key={`${p.a}-${p.b}-${i}`}
-                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dashed border-white/15 bg-surface-raised px-3 py-2 text-sm font-bold text-ink"
-                  >
-                    <span className="text-[10px] font-extrabold text-accent">#{i + 1}</span>
-                    <span className="min-w-0 flex-1 text-center">
-                      {teamName(p.a)}
-                      <span className="mx-2 text-ink-muted">vs</span>
-                      {teamName(p.b)}
-                    </span>
-                    <span className="text-[10px] text-ink-muted">Next wave</span>
-                  </li>
-                ))}
-              </ol>
-            </div>
-          )}
 
-          {queuedMatches.length === 0 && !(format === 'winners-list' && winnersQueuePairs.length > 0) ? (
+          {queuedMatches.length === 0 ? (
             <p className="text-sm font-bold text-ink-secondary">No matches waiting (or all courts are full).</p>
           ) : (
-            queuedMatches.length > 0 && (
             <ol className="space-y-2">
               {queuedMatches.slice(0, 20).map((m, i) => (
                 <li
@@ -355,9 +363,9 @@ export function LiveResultsView() {
                 </li>
               ))}
             </ol>
-            )
           )}
         </section>
+        )}
 
         <section className="w95-panel space-y-4 p-4">
           <div className="w95-list-header -mx-4 -mt-4 mb-2 flex items-center gap-2">

@@ -24,6 +24,11 @@ import {
 import { matchOutcomeFromSets, isValidCompletedSet } from './scoring';
 import { resolveChampionTeamId, isTournamentDecided } from './champion';
 import { countBracketLosses, teamPowerStat, matchPowerMarginForTeam } from './records';
+import {
+  pullTeamsFromWinnersQueue,
+  sanitizeWinnersQueue,
+  winnersListActiveTeamIds
+} from './winnersList';
 import type { Match, Team, TournamentRules } from '../../types';
 
 const teams4 = (n: number): Team[] =>
@@ -831,6 +836,42 @@ describe('teamPowerStat', () => {
       score2: 0
     };
     expect(teamPowerStat('t0', [m])).toBe(0);
+  });
+});
+
+describe('winnersList queue', () => {
+  const live = (net: number, t1: string, t2?: string): Match => ({
+    id: `net-${net}`,
+    team1Id: t1,
+    team2Id: t2 ?? null,
+    round: 1,
+    netIndex: net
+  });
+
+  it('skips queue teams already on an active net', () => {
+    const queue = ['a', 'b', 'c', 'd'];
+    const matches = [live(0, 'a', 'x'), live(1, 'b', 'y')];
+    expect(winnersListActiveTeamIds(matches)).toEqual(new Set(['a', 'x', 'b', 'y']));
+    const pulled = pullTeamsFromWinnersQueue(queue, matches, 2);
+    expect(pulled.teamIds).toEqual(['c', 'd']);
+    expect(pulled.remainingQueue).toEqual(['a', 'b']);
+  });
+
+  it('does not assign the same queued team to two nets when filling both', () => {
+    const queue = ['c', 'd', 'e'];
+    const matches: Match[] = [];
+    const first = pullTeamsFromWinnersQueue(queue, matches, 2);
+    matches.push(live(0, first.teamIds[0]!, first.teamIds[1]!));
+    const second = pullTeamsFromWinnersQueue(first.remainingQueue, matches, 2);
+    expect(second.teamIds).toEqual(['e']);
+    expect(second.teamIds).not.toContain(first.teamIds[0]);
+    expect(second.teamIds).not.toContain(first.teamIds[1]);
+  });
+
+  it('sanitizeWinnersQueue removes active teams left in queue', () => {
+    const queue = ['a', 'b', 'c'];
+    const matches = [live(0, 'a', 'b')];
+    expect(sanitizeWinnersQueue(queue, matches)).toEqual(['c']);
   });
 });
 

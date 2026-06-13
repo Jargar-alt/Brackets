@@ -54,6 +54,10 @@ import { matchesNeedNetReconcile, reconcileMatchNets } from './lib/reconcileNets
 import { readLocalStorageJson, normalizeActiveNets, clearPersistedTournamentProgress, markTournamentPausedLocally } from './lib/persistence';
 import { DEFAULT_RULES, sanitizeRules } from './lib/tournament/rules';
 import { getChangedMatches, matchesSyncEqual, teamsSyncEqual } from './lib/matchSync';
+import {
+  pullTeamsFromWinnersQueue,
+  sanitizeWinnersQueue
+} from './lib/tournament/winnersList';
 
 const DEFAULT_LOCAL_TEAMS: Team[] = [
   { id: '1', name: 'Team 1' },
@@ -133,7 +137,6 @@ export default function App() {
     const n = saved ? parseInt(saved, 10) : 1;
     return Number.isFinite(n) && n > 0 ? n : 1;
   });
-  const [preSignupCount, setPreSignupCount] = useState(8);
   const [queue, setQueue] = useState<string[]>(() =>
     isCloudSession ? [] : readLocalStorageJson<string[]>('tournament_queue', [])
   );
@@ -537,7 +540,7 @@ export default function App() {
 
   const startTournament = async () => {
     try {
-      if (teams.length < 2 && format !== 'winners-list') {
+      if (teams.length < 2) {
         setBanner({ type: 'error', message: 'Add at least 2 teams before starting.' });
         return;
       }
@@ -583,48 +586,35 @@ export default function App() {
       initialMatches = autoAdvanceByes(initialMatches);
       initialMatches = assignRoundRobinNets(initialMatches, numNets);
     } else if (format === 'winners-list') {
-      let currentTeams = teams;
-      if (teams.length === 0 && preSignupCount > 0) {
-        currentTeams = Array.from({ length: preSignupCount }).map((_, i) => ({
-          id: `team-${i + 1}`,
-          name: `Team ${i + 1}`,
-          consecutiveWins: 0
-        }));
-      }
-
-      const initialQueue = currentTeams.map(t => t.id);
+      let initialQueue = teams.map(t => t.id);
       const initialActiveNets: { [key: number]: string | null } = {};
-      
+      const workingMatches: Match[] = [];
+
       for (let i = 0; i < numNets; i++) {
-        if (initialQueue.length >= 2) {
-          const t1Id = initialQueue.shift()!;
-          const t2Id = initialQueue.shift()!;
+        const { teamIds, remainingQueue } = pullTeamsFromWinnersQueue(initialQueue, workingMatches, 2);
+        initialQueue = remainingQueue;
+        if (teamIds.length >= 2) {
           const matchId = `net-${i}-${Date.now()}`;
           const match: Match = {
             id: matchId,
-            team1Id: t1Id,
-            team2Id: t2Id,
+            team1Id: teamIds[0]!,
+            team2Id: teamIds[1]!,
             round: 1,
             netIndex: i
           };
-          initialMatches.push(match);
+          workingMatches.push(match);
           initialActiveNets[i] = matchId;
         } else {
           initialActiveNets[i] = null;
         }
       }
 
+      initialMatches = workingMatches;
+      initialQueue = sanitizeWinnersQueue(initialQueue, workingMatches);
+
       if (tournamentId && db) {
-        // Save teams if they were generated
-        if (teams.length === 0) {
-          for (const team of currentTeams) {
-            await setDoc(doc(db, 'tournaments', tournamentId, 'teams', team.id), team);
-          }
-        } else {
-          // Reset consecutive wins for all teams
-          for (const team of teams) {
-            await updateDoc(doc(db, 'tournaments', tournamentId, 'teams', team.id), { consecutiveWins: 0 });
-          }
+        for (const team of teams) {
+          await updateDoc(doc(db, 'tournaments', tournamentId, 'teams', team.id), { consecutiveWins: 0 });
         }
 
         for (const match of initialMatches) {
@@ -651,7 +641,7 @@ export default function App() {
         setActiveNets(initialActiveNets);
         setIsStarted(true);
         setIsFinished(false);
-        setTeams(currentTeams.map(t => ({ ...t, consecutiveWins: 0 })));
+        setTeams(teams.map(t => ({ ...t, consecutiveWins: 0 })));
       }
       return;
     }
@@ -828,38 +818,59 @@ export default function App() {
       const matchesToAdd: Match[] = [];
 
       if (format === 'winners-list') {
+        let workingMatches = [...matches];
+        for (const m of matchesToAdd) {
+          const idx = workingMatches.findIndex(existing => existing.id === m.id);
+          if (idx !== -1) workingMatches[idx] = m;
+          else workingMatches.push(m);
+        }
+
         for (let i = 0; i < numNets; i++) {
           const currentMatchId = newActiveNets[i];
-          const currentMatch = matches.find(m => m.id === currentMatchId);
+          const currentMatch = workingMatches.find(m => m.id === currentMatchId);
 
-          if ((!currentMatchId || currentMatch?.winnerId) && newQueue.length >= 2) {
-            const t1Id = newQueue.shift()!;
-            const t2Id = newQueue.shift()!;
-            const matchId = `net-${i}-${Date.now()}`;
-            const newMatch: Match = {
-              id: matchId,
-              team1Id: t1Id,
-              team2Id: t2Id,
-              round: 1,
-              netIndex: i
-            };
-            newActiveNets[i] = matchId;
-            matchesToAdd.push(newMatch);
+          if (!currentMatchId || currentMatch?.winnerId) {
+            const { teamIds, remainingQueue } = pullTeamsFromWinnersQueue(newQueue, workingMatches, 2);
+            newQueue = remainingQueue;
+            if (teamIds.length >= 2) {
+              const matchId = `net-${i}-${Date.now()}`;
+              const newMatch: Match = {
+                id: matchId,
+                team1Id: teamIds[0]!,
+                team2Id: teamIds[1]!,
+                round: 1,
+                netIndex: i
+              };
+              newActiveNets[i] = matchId;
+              matchesToAdd.push(newMatch);
+              workingMatches.push(newMatch);
 
-            updatedTeams = updatedTeams.map(t => {
-              if (t.id === t1Id || t.id === t2Id) return { ...t, consecutiveWins: 0 };
-              return t;
-            });
-          } else if (currentMatch && !currentMatch.winnerId && !currentMatch.team2Id && newQueue.length >= 1) {
-            const t2Id = newQueue.shift()!;
-            matchesToAdd.push({ ...currentMatch, team2Id: t2Id });
+              updatedTeams = updatedTeams.map(t => {
+                if (t.id === teamIds[0] || t.id === teamIds[1]) return { ...t, consecutiveWins: 0 };
+                return t;
+              });
+            }
+          } else if (currentMatch && !currentMatch.winnerId && !currentMatch.team2Id) {
+            const { teamIds, remainingQueue } = pullTeamsFromWinnersQueue(newQueue, workingMatches, 1);
+            newQueue = remainingQueue;
+            if (teamIds.length >= 1) {
+              const t2Id = teamIds[0]!;
+              const updatedMatch = { ...currentMatch, team2Id: t2Id };
+              const idx = matchesToAdd.findIndex(m => m.id === currentMatch.id);
+              if (idx !== -1) matchesToAdd[idx] = updatedMatch;
+              else matchesToAdd.push(updatedMatch);
+              const wIdx = workingMatches.findIndex(m => m.id === currentMatch.id);
+              if (wIdx !== -1) workingMatches[wIdx] = updatedMatch;
 
-            updatedTeams = updatedTeams.map(t => {
-              if (t.id === t2Id) return { ...t, consecutiveWins: 0 };
-              return t;
-            });
+              updatedTeams = updatedTeams.map(t => {
+                if (t.id === t2Id) return { ...t, consecutiveWins: 0 };
+                return t;
+              });
+            }
           }
         }
+
+        newQueue = sanitizeWinnersQueue(newQueue, workingMatches);
       }
 
       if (tournamentId && db) {
@@ -975,40 +986,33 @@ export default function App() {
     if (format === 'winners-list' && winnerId && loserId) {
       const netIndex = currentMatch.netIndex!;
       const winnerTeam = teams.find(t => t.id === winnerId);
-      
-      const newQueue = [...queue]; // Loser is removed, doesn't auto-rejoin
-      let nextTeam1Id = winnerId;
-      let nextTeam2Id = null;
 
-      // Update consecutive wins
+      updatedMatches[matchIdx] = currentMatch;
+      let newQueue = sanitizeWinnersQueue([...queue], updatedMatches);
+      let nextTeam1Id: string | null = winnerId;
+      let nextTeam2Id: string | null = null;
+
       const updatedWinnerWins = (winnerTeam?.consecutiveWins || 0) + 1;
       const maxWins = rules.maxConsecutiveWins || 3;
       const reachedMax = updatedWinnerWins >= maxWins;
 
       if (!rules.winnerStays || (reachedMax && rules.onMaxWins === 'both-off')) {
-        // Both off or winner doesn't stay - neither auto-rejoin
-        if (newQueue.length >= 2) {
-          nextTeam1Id = newQueue.shift()!;
-          nextTeam2Id = newQueue.shift()!;
-        } else {
-          nextTeam1Id = null;
-          nextTeam2Id = null;
-        }
+        const pulled = pullTeamsFromWinnersQueue(newQueue, updatedMatches, 2);
+        newQueue = pulled.remainingQueue;
+        nextTeam1Id = pulled.teamIds[0] ?? null;
+        nextTeam2Id = pulled.teamIds[1] ?? null;
       } else if (reachedMax && rules.onMaxWins === 'other-stays') {
-        // Winner off, loser stays - winner doesn't auto-rejoin
-        if (newQueue.length > 0) {
-          nextTeam1Id = loserId; // Other team stays
-          nextTeam2Id = newQueue.shift()!;
-        } else {
-          nextTeam1Id = loserId;
-          nextTeam2Id = null;
-        }
+        nextTeam1Id = loserId;
+        const pulled = pullTeamsFromWinnersQueue(newQueue, updatedMatches, 1, [loserId]);
+        newQueue = pulled.remainingQueue;
+        nextTeam2Id = pulled.teamIds[0] ?? null;
       } else {
-        // Winner stays, loser off - loser doesn't auto-rejoin
-        if (newQueue.length > 0) {
-          nextTeam2Id = newQueue.shift()!;
-        }
+        const pulled = pullTeamsFromWinnersQueue(newQueue, updatedMatches, 1, [winnerId]);
+        newQueue = pulled.remainingQueue;
+        nextTeam2Id = pulled.teamIds[0] ?? null;
       }
+
+      newQueue = sanitizeWinnersQueue(newQueue, updatedMatches);
 
       if (nextTeam1Id) {
         const nextMatchId = `net-${netIndex}-${Date.now()}`;
@@ -1705,31 +1709,6 @@ export default function App() {
                       </div>
                     )}
                   </div>
-
-                  {format === 'winners-list' && (
-                    <div className="sm:col-span-2 pt-4 border-t border-white/8 space-y-6">
-                      <div className="space-y-4">
-                        <label className="block text-sm font-bold text-ink">Pre-sign up Teams</label>
-                        <div className="flex items-center gap-6">
-                          <input
-                            type="range"
-                            min="2"
-                            max="48"
-                            value={preSignupCount}
-                            onChange={(e) => {
-                              const val = parseInt(e.target.value);
-                              setPreSignupCount(val);
-                            }}
-                            className="flex-1 accent-accent h-2 bg-surface-overlay rounded-lg appearance-none cursor-pointer"
-                          />
-                          <div className="w-12 h-12 rounded-xl border border-white/14 bg-surface-overlay flex items-center justify-center text-lg font-bold text-ink">
-                            {preSignupCount}
-                          </div>
-                        </div>
-                        <p className="text-[10px] text-ink-secondary italic">Automatically generates placeholder teams to start the queue.</p>
-                      </div>
-                    </div>
-                  )}
                 </div>
               </div>
 
@@ -1742,33 +1721,6 @@ export default function App() {
                         Teams ({teams.length})
                       </h2>
                       <div className="flex flex-wrap gap-2">
-                        {activeTab === 'winners-list' && (
-                          <button
-                            onClick={async () => {
-                              const newTeams = Array.from({ length: preSignupCount }).map((_, i) => ({
-                                id: `team-${Date.now()}-${i}`,
-                                name: `Team ${teams.length + i + 1}`,
-                                consecutiveWins: 0
-                              }));
-                              if (tournamentId && db) {
-                                try {
-                                  for (const t of newTeams) {
-                                    await setDoc(doc(db, 'tournaments', tournamentId, 'teams', t.id), t);
-                                  }
-                                } catch (err) {
-                                  console.error('[quickAddTeams] failed:', err);
-                                  setBanner({ type: 'error', message: formatFirebaseError(err) });
-                                }
-                              } else {
-                                setTeams([...teams, ...newTeams]);
-                              }
-                            }}
-                            className="flex min-h-11 items-center gap-2 rounded-lg border border-win/30 bg-win/10 px-4 py-2 text-sm font-medium text-win transition-colors hover:bg-win/15"
-                          >
-                            <Plus className="h-4 w-4" />
-                            Quick Add {preSignupCount}
-                          </button>
-                        )}
                         <button
                           onClick={() => addTeam()}
                           className="flex items-center gap-2 rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-900"
@@ -1997,7 +1949,7 @@ export default function App() {
               ) : (
                 <button
                   onClick={startTournament}
-                  disabled={(activeTab === 'tournaments' && teams.length < 2) || (activeTab === 'winners-list' && preSignupCount < 2) || (tournamentId && !isCreator)}
+                  disabled={teams.length < 2 || (tournamentId && !isCreator)}
                   className="flex w-full min-h-[3.25rem] cursor-pointer items-center justify-center gap-3 rounded-xl bg-accent py-4 text-base font-bold text-ink shadow-lg transition-all hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 sm:text-lg"
                 >
                   <Play className="w-6 h-6 fill-current" />

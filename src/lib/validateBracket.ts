@@ -1,7 +1,7 @@
 import type { Match, Team, TournamentFormat } from '../types';
 
 export function validateBracketSeed(matches: Match[], teams: Team[], format: TournamentFormat): void {
-  if (teams.length < 2 && format !== 'winners-list') {
+  if (teams.length < 2) {
     throw new Error('Add at least 2 teams before starting.');
   }
 
