@@ -8,3 +8,13 @@ export function matchCountsTowardEliminationRecord(m: Match): boolean {
   if (m.byeWalkover) return false;
   return Boolean(m.team1Id && m.team2Id && m.winnerId);
 }
+
+/** Losses in completed bracket matches (WB, LB, and grand finals). */
+export function countBracketLosses(teamId: string, matches: Match[]): number {
+  return matches.filter(
+    m =>
+      matchCountsTowardEliminationRecord(m) &&
+      (m.team1Id === teamId || m.team2Id === teamId) &&
+      m.winnerId !== teamId
+  ).length;
+}

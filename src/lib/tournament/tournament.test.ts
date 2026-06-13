@@ -22,6 +22,7 @@ import {
 } from './advance';
 import { matchOutcomeFromSets, isValidCompletedSet } from './scoring';
 import { resolveChampionTeamId, isTournamentDecided } from './champion';
+import { countBracketLosses } from './records';
 import { matchIsOnNet, matchIsWaitingForCourt } from '../matchSchedule';
 import type { Match, Team, TournamentRules } from '../../types';
 
@@ -266,6 +267,51 @@ describe('resolveChampionTeamId', () => {
       { id: 'gf-2', team1Id: 'wb', team2Id: 'lb', round: 3, winnerId: null, nextMatchId: null }
     ];
     expect(resolveChampionTeamId(m)).toBeNull();
+  });
+
+  it('does not crown winners-bracket final before grand finals', () => {
+    const m: Match[] = [
+      {
+        id: 'w1-0',
+        team1Id: 'a',
+        team2Id: 'b',
+        round: 1,
+        winnerId: 'a',
+        bracketType: 'winners',
+        nextMatchId: 'w2-0'
+      },
+      {
+        id: 'w1-1',
+        team1Id: 'c',
+        team2Id: 'd',
+        round: 1,
+        winnerId: 'c',
+        bracketType: 'winners',
+        nextMatchId: 'w2-0'
+      },
+      {
+        id: 'w2-0',
+        team1Id: 'a',
+        team2Id: 'c',
+        round: 2,
+        winnerId: 'a',
+        bracketType: 'winners',
+        nextMatchId: 'gf-1'
+      },
+      { id: 'gf-1', team1Id: null, team2Id: null, round: 3, bracketType: 'winners', nextMatchId: 'gf-2' },
+      { id: 'gf-2', team1Id: null, team2Id: null, round: 4, bracketType: 'winners', nextMatchId: null }
+    ];
+    expect(resolveChampionTeamId(m)).toBeNull();
+    expect(isTournamentDecided('double', m)).toBe(false);
+  });
+
+  it('crowns losers-bracket champ after winning gf-2', () => {
+    const m: Match[] = [
+      { id: 'gf-1', team1Id: 'wb', team2Id: 'lb', round: 2, winnerId: 'lb', nextMatchId: 'gf-2' },
+      { id: 'gf-2', team1Id: 'wb', team2Id: 'lb', round: 3, winnerId: 'lb', nextMatchId: null }
+    ];
+    expect(resolveChampionTeamId(m)).toBe('lb');
+    expect(isTournamentDecided('double', m)).toBe(true);
   });
 
   it('resolves single-elim final winner', () => {
@@ -574,6 +620,27 @@ describe('isTournamentDecided', () => {
       { id: 'gf-2', team1Id: 'wb', team2Id: 'lb', round: 3, winnerId: null, nextMatchId: null }
     ];
     expect(isTournamentDecided('double', m)).toBe(false);
+  });
+});
+
+describe('countBracketLosses', () => {
+  it('counts grand-finals losses so wb runner-up has two after bracket reset', () => {
+    const m: Match[] = [
+      { id: 'gf-1', team1Id: 'wb', team2Id: 'lb', round: 2, winnerId: 'lb' },
+      { id: 'gf-2', team1Id: 'wb', team2Id: 'lb', round: 3, winnerId: 'lb' }
+    ];
+    expect(countBracketLosses('wb', m)).toBe(2);
+    expect(countBracketLosses('lb', m)).toBe(0);
+  });
+
+  it('counts prior bracket losses for losers-bracket champion', () => {
+    const m: Match[] = [
+      { id: 'w1-0', team1Id: 'lb', team2Id: 'x', round: 1, winnerId: 'x' },
+      { id: 'gf-1', team1Id: 'wb', team2Id: 'lb', round: 2, winnerId: 'lb' },
+      { id: 'gf-2', team1Id: 'wb', team2Id: 'lb', round: 3, winnerId: 'lb' }
+    ];
+    expect(countBracketLosses('lb', m)).toBe(1);
+    expect(resolveChampionTeamId(m)).toBe('lb');
   });
 });
 

@@ -6,6 +6,10 @@ function isRealWinner(id: string | null | undefined): id is string {
   return Boolean(id && id !== BYE_SENTINEL);
 }
 
+function hasDoubleElimGrandFinals(matches: Match[]): boolean {
+  return matches.some(m => m.id === 'gf-1');
+}
+
 function singleElimFinal(matches: Match[]): Match | null {
   const winners = matches.filter(
     m => m.bracketType !== 'losers' && !isAutoAdvancePlaceholder(m) && m.team1Id && m.team2Id
@@ -23,7 +27,13 @@ export function resolveChampionTeamId(matches: Match[]): string | null {
 
   const gf1 = matches.find(m => m.id === 'gf-1');
   if (gf1 && isRealWinner(gf1.winnerId)) {
+    // WB champ (team1) can win outright in gf-1; LB champ must also win gf-2.
     if (gf1.winnerId === gf1.team1Id) return gf1.winnerId;
+    return null;
+  }
+
+  // Double elim: only grand finals decide the champion — not the winners-bracket final.
+  if (hasDoubleElimGrandFinals(matches)) {
     return null;
   }
 
