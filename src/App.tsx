@@ -51,7 +51,7 @@ import { validateBracketSeed } from './lib/validateBracket';
 import { formatFirebaseError } from './lib/firebaseErrors';
 import { matchToFirestore } from './lib/matchFirestore';
 import { matchesNeedNetReconcile, reconcileMatchNets } from './lib/reconcileNets';
-import { readLocalStorageJson, normalizeActiveNets, clearPersistedTournamentProgress } from './lib/persistence';
+import { readLocalStorageJson, normalizeActiveNets, clearPersistedTournamentProgress, markTournamentPausedLocally } from './lib/persistence';
 import { DEFAULT_RULES, sanitizeRules } from './lib/tournament/rules';
 import { getChangedMatches, matchesSyncEqual, teamsSyncEqual } from './lib/matchSync';
 
@@ -154,6 +154,16 @@ export default function App() {
   const teamNameTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const syncRef = useRef({ isCreator, isStarted, isFinished, format, numNets });
   syncRef.current = { isCreator, isStarted, isFinished, format, numNets };
+
+  const markTournamentFinished = useCallback(() => {
+    syncRef.current = { ...syncRef.current, isFinished: true };
+    setIsFinished(true);
+  }, []);
+
+  const markTournamentOpen = useCallback(() => {
+    syncRef.current = { ...syncRef.current, isFinished: false };
+    setIsFinished(false);
+  }, []);
 
   useEffect(() => {
     const timers = teamNameTimersRef.current;
@@ -317,6 +327,7 @@ export default function App() {
       collection(db, 'tournaments', tournamentId, 'matches'),
       snapshot => {
         if (suppressCloudSyncRef.current) return;
+        if (syncRef.current.isFinished) return;
         let matchesData = snapshot.docs.map(d => {
           const data = d.data() as Match;
           return { ...data, id: data.id ?? d.id };
@@ -715,7 +726,7 @@ export default function App() {
         if (tournamentId && db) {
           await updateDoc(doc(db, 'tournaments', tournamentId), { isFinished: true });
         }
-        setIsFinished(true);
+        markTournamentFinished();
       } catch (err) {
         console.error('[endTournament] failed:', err);
         setBanner({ type: 'error', message: formatFirebaseError(err) });
@@ -761,6 +772,7 @@ export default function App() {
 
     const tid = tournamentId;
     suppressCloudSyncRef.current = true;
+    syncRef.current = { ...syncRef.current, isStarted: false, isFinished: false };
     setMatches([]);
     setQueue([]);
     setActiveNets({});
@@ -1134,9 +1146,9 @@ export default function App() {
 
     setMatches(matchesWithNets);
     if (tournamentComplete) {
-      setIsFinished(true);
+      markTournamentFinished();
     } else if (isFinished && !bracketStillDecided) {
-      setIsFinished(false);
+      markTournamentOpen();
     }
 
     if (tournamentId && db) {
@@ -1180,7 +1192,9 @@ export default function App() {
     isFinished,
     numNets,
     queue,
-    activeNets
+    activeNets,
+    markTournamentFinished,
+    markTournamentOpen
   ]);
 
   const finishTournament = async () => {
@@ -1189,7 +1203,7 @@ export default function App() {
         if (tournamentId && db) {
           await updateDoc(doc(db, 'tournaments', tournamentId), { isFinished: true });
         }
-        setIsFinished(true);
+        markTournamentFinished();
       } catch (err) {
         console.error('[finishTournament] failed:', err);
         setBanner({ type: 'error', message: formatFirebaseError(err) });
@@ -1240,19 +1254,32 @@ export default function App() {
       return;
     }
 
+    suppressCloudSyncRef.current = true;
+    syncRef.current = { ...syncRef.current, isStarted: false };
     setIsStarted(false);
-
-    if (tournamentId && !isCreator) {
-      setTournamentId(null);
-      localStorage.removeItem('tournament_id');
-      return;
+    if (!tournamentId) {
+      markTournamentPausedLocally();
     }
 
-    if (tournamentId && db && isCreator) {
-      void updateDoc(doc(db, 'tournaments', tournamentId), { isStarted: false }).catch(err => {
-        console.error('[exitToHome] failed:', err);
-        setBanner({ type: 'error', message: formatFirebaseError(err) });
-      });
+    try {
+      if (tournamentId && !isCreator) {
+        setTournamentId(null);
+        try {
+          localStorage.removeItem('tournament_id');
+        } catch {
+          /* ignore */
+        }
+        return;
+      }
+
+      if (tournamentId && db && isCreator) {
+        await updateDoc(doc(db, 'tournaments', tournamentId), { isStarted: false });
+      }
+    } catch (err) {
+      console.error('[exitToHome] failed:', err);
+      setBanner({ type: 'error', message: formatFirebaseError(err) });
+    } finally {
+      suppressCloudSyncRef.current = false;
     }
   }, [isStarted, isFinished, tournamentId, isCreator]);
 
@@ -1988,134 +2015,113 @@ export default function App() {
         </div>
       ) : (
           <div id="tournament-view">
-            {isFinished && (
-              <div className="mb-6 rounded-xl border border-win/35 bg-win/10 px-4 py-6 text-center sm:py-8">
-                {format === 'casual' ? (
-                  <>
-                    <p className="text-xs font-semibold uppercase tracking-widest text-win">
-                      Session complete
-                    </p>
-                    <p className="mt-3 text-lg font-semibold text-ink">
-                      All scheduled games are done. This format does not name a tournament winner.
-                    </p>
-                  </>
-                ) : format === 'pool' && displayChampion ? (
-                  <>
-                    <p className="text-xs font-semibold uppercase tracking-widest text-win">
-                      Pool play winner
-                    </p>
-                    <p className="mt-2 text-3xl font-bold leading-tight text-ink sm:text-4xl">
-                      {displayChampion.name}
-                    </p>
-                    <p className="mt-2 text-sm text-ink-secondary">
-                      Best record when all pool matches finished
-                    </p>
-                  </>
-                ) : displayChampion ? (
-                  <>
-                    <p className="text-xs font-semibold uppercase tracking-widest text-win">
-                      Tournament champion
-                    </p>
-                    <p className="mt-2 text-3xl font-bold leading-tight text-ink sm:text-4xl">
-                      {displayChampion.name}
-                    </p>
-                    <p className="mt-2 text-sm font-medium text-ink-secondary">
-                      First to {rules.pointsToWin}
-                      {rules.bestOf === 3 ? ' · Best of 3' : ' · One set'}
-                      {rules.winByTwo ? ' · Win by 2' : ''}
-                      {rules.serveToWin ? ' · Serve to win' : ''}
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-xs font-semibold uppercase tracking-widest text-win">
-                      Tournament complete
-                    </p>
-                    <p className="mt-3 text-lg font-semibold text-ink">
-                      All matches finished — review standings for placement.
-                    </p>
-                  </>
-                )}
-              </div>
-            )}
-
-            <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-              <div>
-                <h1 className="mb-2 border-b border-white/8 pb-1 text-lg font-bold text-ink sm:text-xl">
-                  Tournament live
-                </h1>
-                <div className="flex flex-wrap gap-2">
-                  <div className="w95-inset flex items-center gap-2 px-2 py-1.5 text-xs font-semibold text-ink-secondary">
-                    <Info className="h-4 w-4 shrink-0" />
-                    <span>
-                      First to {rules.pointsToWin}
-                      {rules.bestOf === 3 && ' · Best of 3'}
-                      {rules.winByTwo && ' · Win by 2'}
-                    </span>
-                  </div>
-                  {rules.serveToWin && (
-                    <div className="panel-tint-tie flex max-w-full items-center gap-1.5 px-2 py-1.5 text-[11px] font-medium text-ink">
-                      <Info className="h-3.5 w-3.5 shrink-0 text-tie" />
-                      <span className="leading-snug">Serve to win on</span>
-                    </div>
-                  )}
-                  {tournamentId && (
-                    <div className="flex items-center gap-2 rounded-lg border border-white/14 bg-surface-overlay px-2 py-1.5 text-xs font-semibold uppercase text-ink">
-                      <Share2 className="h-4 w-4" />
-                      {inviteCode}
-                    </div>
-                  )}
-                  {isFinished && displayChampion && format !== 'casual' && (
-                    <div className="flex items-center gap-2 rounded-lg border border-win/30 bg-win/10 px-2 py-1.5 text-xs font-semibold text-win">
-                      <Trophy className="h-4 w-4" />
-                      {displayChampion.name}
-                    </div>
-                  )}
-                  {isFinished && !displayChampion && format !== 'casual' && (
-                    <div className="flex items-center gap-2 rounded-lg border border-win/30 bg-win/10 px-2 py-1.5 text-xs font-semibold text-win">
-                      <Trophy className="h-4 w-4" />
-                      Complete
-                    </div>
+            {isFinished ? (
+              <>
+                <div className="mb-6 rounded-xl border border-win/35 bg-win/10 px-4 py-6 text-center sm:py-8">
+                  {format === 'casual' ? (
+                    <>
+                      <p className="text-xs font-semibold uppercase tracking-widest text-win">
+                        Session complete
+                      </p>
+                      <p className="mt-3 text-lg font-semibold text-ink">
+                        All scheduled games are done. This format does not name a tournament winner.
+                      </p>
+                    </>
+                  ) : format === 'pool' && displayChampion ? (
+                    <>
+                      <p className="text-xs font-semibold uppercase tracking-widest text-win">
+                        Pool play winner
+                      </p>
+                      <p className="mt-2 text-3xl font-bold leading-tight text-ink sm:text-4xl">
+                        {displayChampion.name}
+                      </p>
+                      <p className="mt-2 text-sm text-ink-secondary">
+                        Best record when all pool matches finished
+                      </p>
+                    </>
+                  ) : displayChampion ? (
+                    <>
+                      <p className="text-xs font-semibold uppercase tracking-widest text-win">
+                        Tournament champion
+                      </p>
+                      <p className="mt-2 text-3xl font-bold leading-tight text-ink sm:text-4xl">
+                        {displayChampion.name}
+                      </p>
+                      <p className="mt-2 text-sm font-medium text-ink-secondary">
+                        First to {rules.pointsToWin}
+                        {rules.bestOf === 3 ? ' · Best of 3' : ' · One set'}
+                        {rules.winByTwo ? ' · Win by 2' : ''}
+                        {rules.serveToWin ? ' · Serve to win' : ''}
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-xs font-semibold uppercase tracking-widest text-win">
+                        Tournament complete
+                      </p>
+                      <p className="mt-3 text-lg font-semibold text-ink">
+                        All matches finished — review standings for placement.
+                      </p>
+                    </>
                   )}
                 </div>
-              </div>
+                <FinishedTournamentView
+                  format={format}
+                  matches={matches}
+                  teams={teams}
+                  championId={displayChampion?.id}
+                  onGoHome={() => void exitToHome()}
+                  onNewTournament={() => void resetToSetup()}
+                />
+              </>
+            ) : (
+              <>
+                <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+                  <div>
+                    <h1 className="mb-2 border-b border-white/8 pb-1 text-lg font-bold text-ink sm:text-xl">
+                      Tournament live
+                    </h1>
+                    <div className="flex flex-wrap gap-2">
+                      <div className="w95-inset flex items-center gap-2 px-2 py-1.5 text-xs font-semibold text-ink-secondary">
+                        <Info className="h-4 w-4 shrink-0" />
+                        <span>
+                          First to {rules.pointsToWin}
+                          {rules.bestOf === 3 && ' · Best of 3'}
+                          {rules.winByTwo && ' · Win by 2'}
+                        </span>
+                      </div>
+                      {rules.serveToWin && (
+                        <div className="panel-tint-tie flex max-w-full items-center gap-1.5 px-2 py-1.5 text-[11px] font-medium text-ink">
+                          <Info className="h-3.5 w-3.5 shrink-0 text-tie" />
+                          <span className="leading-snug">Serve to win on</span>
+                        </div>
+                      )}
+                      {tournamentId && (
+                        <div className="flex items-center gap-2 rounded-lg border border-white/14 bg-surface-overlay px-2 py-1.5 text-xs font-semibold uppercase text-ink">
+                          <Share2 className="h-4 w-4" />
+                          {inviteCode}
+                        </div>
+                      )}
+                    </div>
+                  </div>
 
-              <div className="flex flex-wrap items-center gap-2">
-                {isCreator && !isFinished && (
-                  <button
-                    type="button"
-                    onClick={endTournament}
-                    className="w95-btn-default flex items-center gap-2 text-xs sm:text-sm"
-                  >
-                    <Trophy className="h-4 w-4" />
-                    End tournament
-                  </button>
-                )}
-                {isFinished && isCreator && (
-                  <button
-                    type="button"
-                    onClick={resetToSetup}
-                    className="w95-btn-default flex items-center gap-2 text-xs sm:text-sm"
-                  >
-                    <Plus className="h-4 w-4" />
-                    New tournament
-                  </button>
-                )}
-              </div>
-            </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {isCreator && (
+                      <button
+                        type="button"
+                        onClick={endTournament}
+                        className="w95-btn-default flex items-center gap-2 text-xs sm:text-sm"
+                      >
+                        <Trophy className="h-4 w-4" />
+                        End tournament
+                      </button>
+                    )}
+                  </div>
+                </div>
 
-            {!isFinished && <LiveFeed matches={matches} teams={teams} />}
+                <LiveFeed matches={matches} teams={teams} />
 
-            {isFinished ? (
-              <FinishedTournamentView
-                format={format}
-                matches={matches}
-                teams={teams}
-                championId={displayChampion?.id}
-                onGoHome={() => void exitToHome()}
-                onNewTournament={() => void resetToSetup()}
-              />
-            ) : format === 'winners-list' ? (
+                {format === 'winners-list' ? (
               <WinnersListView 
                 matches={matches} 
                 teams={teams} 
@@ -2126,7 +2132,7 @@ export default function App() {
                 onLeaveQueue={onLeaveQueue}
                 onAddTeam={addTeam}
                 isCreator={isCreator}
-                isFinished={isFinished}
+                isFinished={false}
                 rules={rules}
               />
             ) : format === 'pool' ? (
@@ -2136,9 +2142,8 @@ export default function App() {
                 teams={teams}
                 numNets={numNets}
                 onUpdateScore={updateScore}
-                isFinished={isFinished}
+                isFinished={false}
                 rules={rules}
-                highlightTeamId={isFinished ? displayChampion?.id : undefined}
               />
             ) : format === 'casual' ? (
               <CourtScheduleView
@@ -2149,7 +2154,7 @@ export default function App() {
                 teams={teams}
                 numNets={numNets}
                 onUpdateScore={updateScore}
-                isFinished={isFinished}
+                isFinished={false}
                 rules={rules}
               />
             ) : format === 'single' ? (
@@ -2159,9 +2164,8 @@ export default function App() {
                 teams={teams}
                 numNets={numNets}
                 onUpdateScore={updateScore}
-                isFinished={isFinished}
+                isFinished={false}
                 rules={rules}
-                highlightTeamId={isFinished ? displayChampion?.id : undefined}
               />
             ) : (
               <EliminationCourtView
@@ -2170,10 +2174,11 @@ export default function App() {
                 teams={teams}
                 numNets={numNets}
                 onUpdateScore={updateScore}
-                isFinished={isFinished}
+                isFinished={false}
                 rules={rules}
-                highlightTeamId={isFinished ? displayChampion?.id : undefined}
               />
+            )}
+              </>
             )}
           </div>
         )}

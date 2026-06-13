@@ -41,3 +41,12 @@ export function clearPersistedTournamentProgress(): void {
     /* ignore quota / private mode */
   }
 }
+
+/** Keep bracket data but mark the session as paused on the setup screen. */
+export function markTournamentPausedLocally(): void {
+  try {
+    localStorage.setItem('tournament_isStarted', 'false');
+  } catch {
+    /* ignore */
+  }
+}
