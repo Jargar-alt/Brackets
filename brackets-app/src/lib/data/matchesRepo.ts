@@ -3,14 +3,13 @@ import {
   doc,
   getDocs,
   onSnapshot,
-  orderBy,
-  query,
   runTransaction,
   writeBatch,
   type Transaction
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { touchTournament } from "./tournamentsRepo";
+import { FIRESTORE_BATCH_LIMIT, matchToFirestore, sortMatches } from "./firestoreUtils";
 import { computeLoserId, computeWinnerId } from "../bracket/scoring";
 import type { Match } from "../../types/tournament";
 
@@ -42,35 +41,44 @@ function parseMatchDoc(id: string, data: Record<string, unknown>): Match {
 
 export function subscribeToMatches(
   tournamentId: string,
-  onData: (matches: Match[]) => void
+  onData: (matches: Match[]) => void,
+  onError?: (error: Error) => void
 ): () => void {
-  const q = query(matchesCollection(tournamentId), orderBy("round", "asc"), orderBy("order", "asc"));
   return onSnapshot(
-    q,
+    matchesCollection(tournamentId),
     (snap) => {
-      onData(snap.docs.map((d) => parseMatchDoc(d.id, d.data())));
+      onData(sortMatches(snap.docs.map((d) => parseMatchDoc(d.id, d.data()))));
     },
-    () => onData([])
+    (error) => onError?.(error)
   );
 }
 
 export async function clearMatches(tournamentId: string): Promise<void> {
   const snap = await getDocs(matchesCollection(tournamentId));
   if (snap.empty) return;
-  const batch = writeBatch(db);
-  for (const docSnap of snap.docs) {
-    batch.delete(docSnap.ref);
+
+  for (let i = 0; i < snap.docs.length; i += FIRESTORE_BATCH_LIMIT) {
+    const batch = writeBatch(db);
+    for (const docSnap of snap.docs.slice(i, i + FIRESTORE_BATCH_LIMIT)) {
+      batch.delete(docSnap.ref);
+    }
+    await batch.commit();
   }
-  await batch.commit();
+}
+
+async function writeMatchBatches(tournamentId: string, matches: Match[]): Promise<void> {
+  for (let i = 0; i < matches.length; i += FIRESTORE_BATCH_LIMIT) {
+    const batch = writeBatch(db);
+    for (const match of matches.slice(i, i + FIRESTORE_BATCH_LIMIT)) {
+      batch.set(matchRef(tournamentId, match.id), matchToFirestore(match));
+    }
+    await batch.commit();
+  }
 }
 
 export async function seedMatches(tournamentId: string, matches: Match[]): Promise<void> {
   await clearMatches(tournamentId);
-  const batch = writeBatch(db);
-  for (const match of matches) {
-    batch.set(matchRef(tournamentId, match.id), match);
-  }
-  await batch.commit();
+  await writeMatchBatches(tournamentId, matches);
   await resolveByeMatches(tournamentId);
 }
 
@@ -109,7 +117,13 @@ export async function updateMatchScore(
   const newLoserId = computeLoserId(match, newWinnerId);
 
   await runTransaction(db, async (tx) => {
-    tx.update(matchRef(tournamentId, match.id), { player1Score, player2Score, winnerId: newWinnerId });
+    const ref = matchRef(tournamentId, match.id);
+    const existing = await tx.get(ref);
+    if (!existing.exists()) {
+      throw new Error("Match no longer exists. Regenerate the bracket.");
+    }
+
+    tx.update(ref, { player1Score, player2Score, winnerId: newWinnerId });
 
     if (match.nextMatchId && match.nextSlot) {
       await applySlotUpdate(tx, tournamentId, match.nextMatchId, match.nextSlot, oldWinnerId, newWinnerId);
@@ -135,7 +149,7 @@ export async function resolveByeMatches(tournamentId: string, knownMatches?: Mat
     let matches = knownMatches;
     if (!matches || pass > 0) {
       const snap = await getDocs(matchesCollection(tournamentId));
-      matches = snap.docs.map((d) => parseMatchDoc(d.id, d.data()));
+      matches = sortMatches(snap.docs.map((d) => parseMatchDoc(d.id, d.data())));
     }
 
     const byeMatches = matches

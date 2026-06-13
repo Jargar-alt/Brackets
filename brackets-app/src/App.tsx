@@ -4,16 +4,18 @@ import { LiveFeed } from "./components/brackets/LiveFeed";
 import { ParticipantsEditor } from "./components/participants/ParticipantsEditor";
 import { TournamentDashboard } from "./components/tournaments/TournamentDashboard";
 import { TournamentForm } from "./components/tournaments/TournamentForm";
-import { ensureAnonymousAuth } from "./lib/firebase";
+import { ensureAnonymousAuth, formatFirebaseError, subscribeToAuth } from "./lib/firebase";
 import { addParticipant, removeParticipant, subscribeToParticipants, updateParticipant } from "./lib/data/participantsRepo";
 import { seedMatches, subscribeToMatches, updateMatchScore } from "./lib/data/matchesRepo";
-import { createTournament, subscribeToTournaments, touchTournament } from "./lib/data/tournamentsRepo";
+import { canEditTournament, createTournament, subscribeToTournaments, touchTournament } from "./lib/data/tournamentsRepo";
 import { generateMatches } from "./lib/bracket/common";
+import { validateBracketSeed } from "./lib/bracket/validate";
 import { countLiveMatches } from "./lib/bracket/matchStatus";
 import { exportTournamentSnapshot, importTournamentSnapshot } from "./lib/io/jsonBackup";
 import type { Match, Participant, Tournament, TournamentSnapshot } from "./types/tournament";
 
 type Banner = { type: "error" | "success" | "info"; message: string } | null;
+type AuthState = "loading" | "ready" | "error";
 
 const TYPE_LABELS: Record<Tournament["type"], string> = {
   "single-elim": "Single Elimination",
@@ -39,47 +41,103 @@ function StatusBanner({ banner, onDismiss }: { banner: Banner; onDismiss: () => 
 }
 
 function App() {
-  const [uid, setUid] = useState<string>("");
+  const [uid, setUid] = useState("");
+  const [authState, setAuthState] = useState<AuthState>("loading");
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
   const [banner, setBanner] = useState<Banner>(null);
   const [busy, setBusy] = useState(false);
+
   const selectedTournament = useMemo(() => tournaments.find((t) => t.id === selectedId) ?? null, [tournaments, selectedId]);
-  const canGenerateBracket = participants.length >= 2 && !busy;
+  const canEdit = canEditTournament(selectedTournament, uid);
+  const canGenerateBracket = participants.length >= 2 && !busy && canEdit && authState === "ready";
   const liveCount = countLiveMatches(matches);
 
   useEffect(() => {
-    void ensureAnonymousAuth()
-      .then(setUid)
-      .catch(() => setBanner({ type: "error", message: "Could not connect to Firebase. Check your environment config." }));
-    return subscribeToTournaments(setTournaments);
+    return subscribeToAuth((user) => {
+      setUid(user?.uid ?? "");
+    });
   }, []);
 
   useEffect(() => {
-    if (!selectedId) return;
-    const offParticipants = subscribeToParticipants(selectedId, setParticipants);
-    const offMatches = subscribeToMatches(selectedId, setMatches);
+    void ensureAnonymousAuth()
+      .then((nextUid) => {
+        setUid(nextUid);
+        setAuthState("ready");
+      })
+      .catch((error) => {
+        setAuthState("error");
+        setBanner({ type: "error", message: formatFirebaseError(error) });
+      });
+  }, []);
+
+  useEffect(() => {
+    return subscribeToTournaments(setTournaments, (error) => {
+      setBanner({ type: "error", message: formatFirebaseError(error) });
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!selectedId) {
+      setParticipants([]);
+      setMatches([]);
+      return;
+    }
+
+    const offParticipants = subscribeToParticipants(
+      selectedId,
+      setParticipants,
+      (error) => setBanner({ type: "error", message: `Participants: ${formatFirebaseError(error)}` })
+    );
+    const offMatches = subscribeToMatches(
+      selectedId,
+      setMatches,
+      (error) => setBanner({ type: "error", message: `Matches: ${formatFirebaseError(error)}` })
+    );
+
     return () => {
       offParticipants();
       offMatches();
     };
   }, [selectedId]);
 
+  useEffect(() => {
+    if (!selectedTournament || !uid || authState !== "ready") return;
+    if (!canEdit) {
+      setBanner({
+        type: "info",
+        message: "View-only mode. Create a new tournament in this browser to manage brackets and scores."
+      });
+    }
+  }, [selectedTournament, uid, authState, canEdit]);
+
   async function runAction(action: () => Promise<void>, successMessage?: string) {
+    if (authState !== "ready") {
+      setBanner({ type: "error", message: "Still connecting to Firebase. Try again in a moment." });
+      return;
+    }
+
     setBusy(true);
     try {
+      await ensureAnonymousAuth();
       await action();
       if (successMessage) setBanner({ type: "success", message: successMessage });
     } catch (err) {
-      setBanner({
-        type: "error",
-        message: err instanceof Error ? err.message : "Something went wrong. Please try again."
-      });
+      setBanner({ type: "error", message: formatFirebaseError(err) });
     } finally {
       setBusy(false);
     }
+  }
+
+  async function saveScore(match: Match, player1Score: number, player2Score: number) {
+    if (!selectedId) return;
+    if (!canEdit) {
+      throw new Error("You do not have permission to edit this tournament.");
+    }
+    await ensureAnonymousAuth();
+    await updateMatchScore(selectedId, match, player1Score, player2Score);
   }
 
   return (
@@ -104,10 +162,14 @@ function App() {
               <p className="text-xs text-ink-muted">
                 {participants.length} players · {matches.length} matches
                 {liveCount > 0 && <span className="text-live"> · {liveCount} live</span>}
+                {!canEdit && <span className="text-tie"> · view only</span>}
               </p>
             </div>
           )}
 
+          {authState === "loading" && (
+            <span className="text-xs text-ink-muted">Connecting…</span>
+          )}
           {liveCount > 0 && (
             <div className="flex items-center gap-2 rounded-full bg-live/15 px-3 py-1.5 sm:hidden">
               <span className="h-2 w-2 rounded-full bg-live animate-live-pulse" />
@@ -121,9 +183,10 @@ function App() {
         <aside className="space-y-3 md:sticky md:top-[4.5rem] md:self-start">
           <StatusBanner banner={banner} onDismiss={() => setBanner(null)} />
           <TournamentForm
+            disabled={authState !== "ready" || busy}
             onCreate={async (input) => {
               await runAction(async () => {
-                const id = await createTournament({ ...input, ownerUid: uid });
+                const id = await createTournament(input);
                 setSelectedId(id);
               }, "Tournament created.");
             }}
@@ -149,7 +212,7 @@ function App() {
                   className="hidden"
                   type="file"
                   accept=".json"
-                  disabled={busy}
+                  disabled={busy || !canEdit}
                   onChange={async (event) => {
                     const file = event.target.files?.[0];
                     if (!file || !selectedId) return;
@@ -178,6 +241,7 @@ function App() {
                   <h2 className="mt-1 text-2xl font-bold tracking-tight">{selectedTournament.name}</h2>
                   <p className="mt-1 text-sm text-ink-secondary">
                     {participants.length} players · {matches.length} matches
+                    {!canEdit && " · view only"}
                   </p>
                 </section>
               )}
@@ -185,14 +249,20 @@ function App() {
               <LiveFeed
                 matches={matches}
                 participants={participants}
-                onSaveScore={async (match, player1Score, player2Score) => {
-                  await updateMatchScore(selectedId, match, player1Score, player2Score);
-                }}
+                readOnly={!canEdit}
+                onSaveScore={saveScore}
               />
 
               <ParticipantsEditor
                 participants={participants}
-                onAdd={async (name) => addParticipant(selectedId, name, participants.length + 1)}
+                readOnly={!canEdit}
+                defaultExpanded
+                onAdd={async (name) => {
+                  await runAction(async () => {
+                    await addParticipant(selectedId, name, participants.length + 1);
+                    await touchTournament(selectedId);
+                  });
+                }}
                 onBulkImport={async (names) => {
                   const existing = new Set(participants.map((p) => p.name.toLowerCase()));
                   const unique = names
@@ -204,18 +274,27 @@ function App() {
                     setBanner({ type: "info", message: "No new participants to import." });
                     return;
                   }
-                  for (const name of unique) {
-                    await addParticipant(selectedId, name, participants.length + 1);
-                  }
-                  await touchTournament(selectedId);
+                  await runAction(async () => {
+                    for (const name of unique) {
+                      await addParticipant(selectedId, name, participants.length + 1);
+                    }
+                    await touchTournament(selectedId);
+                  }, `Added ${unique.length} participant${unique.length === 1 ? "" : "s"}.`);
                 }}
-                onUpdate={(participantId, name) => updateParticipant(selectedId, participantId, name)}
+                onUpdate={async (participantId, name) => {
+                  await runAction(async () => {
+                    await updateParticipant(selectedId, participantId, name);
+                    await touchTournament(selectedId);
+                  });
+                }}
                 onRemove={async (participantId) => {
                   const participant = participants.find((p) => p.id === participantId);
                   const label = participant?.name ?? "this participant";
                   if (!window.confirm(`Remove ${label}? This does not update existing matches.`)) return;
-                  await removeParticipant(selectedId, participantId);
-                  await touchTournament(selectedId);
+                  await runAction(async () => {
+                    await removeParticipant(selectedId, participantId);
+                    await touchTournament(selectedId);
+                  });
                 }}
               />
 
@@ -224,9 +303,11 @@ function App() {
                   <div>
                     <h3 className="text-sm font-semibold text-ink">Bracket Setup</h3>
                     <p className="mt-0.5 text-xs text-ink-muted">
-                      {participants.length < 2
-                        ? "Add at least 2 participants first."
-                        : `${participants.length} participants ready to seed.`}
+                      {!canEdit
+                        ? "This tournament is view-only in this browser."
+                        : participants.length < 2
+                          ? "Add at least 2 participants first."
+                          : `${participants.length} participants ready to seed.`}
                     </p>
                   </div>
                   <button
@@ -243,8 +324,9 @@ function App() {
                       }
                       await runAction(async () => {
                         const bracketMatches = generateMatches(selectedTournament.type, participants);
+                        validateBracketSeed(bracketMatches, participants, selectedTournament.type);
                         await seedMatches(selectedId, bracketMatches);
-                      }, "Bracket generated.");
+                      }, `Bracket generated with ${participants.length} players.`);
                     }}
                   >
                     {matches.length > 0 ? "Regenerate Bracket" : "Generate Bracket"}
@@ -256,9 +338,8 @@ function App() {
                 matches={matches}
                 participants={participants}
                 tournamentType={selectedTournament?.type ?? "single-elim"}
-                onSaveScore={async (match, player1Score, player2Score) => {
-                  await updateMatchScore(selectedId, match, player1Score, player2Score);
-                }}
+                readOnly={!canEdit}
+                onSaveScore={saveScore}
               />
             </>
           ) : (

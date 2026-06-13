@@ -9,6 +9,7 @@ interface Props {
   participantsById: Record<string, Participant>;
   onSaveScore: (match: Match, player1Score: number, player2Score: number) => Promise<void>;
   variant?: "feed" | "bracket";
+  readOnly?: boolean;
 }
 
 type SaveState = "idle" | "saving" | "saved" | "error";
@@ -28,7 +29,7 @@ function statusTone(status: ReturnType<typeof getMatchStatus>) {
   }
 }
 
-export function MatchCard({ match, participantsById, onSaveScore, variant = "bracket" }: Props) {
+export function MatchCard({ match, participantsById, onSaveScore, variant = "bracket", readOnly = false }: Props) {
   const [draft1, setDraft1] = useState(String(match.player1Score));
   const [draft2, setDraft2] = useState(String(match.player2Score));
   const [saveState, setSaveState] = useState<SaveState>("idle");
@@ -51,7 +52,7 @@ export function MatchCard({ match, participantsById, onSaveScore, variant = "bra
   const isFeed = variant === "feed";
 
   async function commitScores() {
-    if (!scorable || isBye) return;
+    if (!scorable || isBye || readOnly) return;
 
     const parsed1 = parseScoreInput(draft1);
     const parsed2 = parseScoreInput(draft2);
@@ -122,7 +123,7 @@ export function MatchCard({ match, participantsById, onSaveScore, variant = "bra
           score={draft1}
           isWinner={match.winnerId === match.player1Id}
           isLoser={Boolean(match.winnerId && match.winnerId !== match.player1Id && match.player1Id)}
-          disabled={!scorable || isBye || saveState === "saving"}
+          disabled={readOnly || !scorable || isBye || saveState === "saving"}
           scoreSize={scoreSize}
           rowPadding={rowPadding}
           onChange={setDraft1}
@@ -135,7 +136,7 @@ export function MatchCard({ match, participantsById, onSaveScore, variant = "bra
           score={draft2}
           isWinner={match.winnerId === match.player2Id}
           isLoser={Boolean(match.winnerId && match.winnerId !== match.player2Id && match.player2Id)}
-          disabled={!scorable || isBye || saveState === "saving"}
+          disabled={readOnly || !scorable || isBye || saveState === "saving"}
           scoreSize={scoreSize}
           rowPadding={rowPadding}
           onChange={setDraft2}

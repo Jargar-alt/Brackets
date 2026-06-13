@@ -7,6 +7,7 @@ interface Props {
   participants: Participant[];
   tournamentType: TournamentType;
   onSaveScore: (match: Match, player1Score: number, player2Score: number) => Promise<void>;
+  readOnly?: boolean;
 }
 
 const BRACKET_LABELS: Record<Match["bracket"], string> = {
@@ -27,7 +28,7 @@ function groupMatchesByBracketAndRound(matches: Match[]): Map<Match["bracket"], 
   return grouped;
 }
 
-export function BracketBoard({ matches, participants, tournamentType, onSaveScore }: Props) {
+export function BracketBoard({ matches, participants, tournamentType, onSaveScore, readOnly = false }: Props) {
   const participantsById = Object.fromEntries(participants.map((p) => [p.id, p] as const));
   const grouped = groupMatchesByBracketAndRound(matches);
 
@@ -68,6 +69,7 @@ export function BracketBoard({ matches, participants, tournamentType, onSaveScor
                           participantsById={participantsById}
                           onSaveScore={onSaveScore}
                           variant="bracket"
+                          readOnly={readOnly}
                         />
                       ))}
                     </div>

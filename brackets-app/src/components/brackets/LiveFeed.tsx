@@ -6,9 +6,10 @@ interface Props {
   matches: Match[];
   participants: Participant[];
   onSaveScore: (match: Match, player1Score: number, player2Score: number) => Promise<void>;
+  readOnly?: boolean;
 }
 
-export function LiveFeed({ matches, participants, onSaveScore }: Props) {
+export function LiveFeed({ matches, participants, onSaveScore, readOnly = false }: Props) {
   const participantsById = Object.fromEntries(participants.map((p) => [p.id, p] as const));
   const feedMatches = sortMatchesForLiveFeed(matches).filter(isFeedMatch);
   const liveCount = countLiveMatches(matches);
@@ -49,6 +50,7 @@ export function LiveFeed({ matches, participants, onSaveScore }: Props) {
               participantsById={participantsById}
               onSaveScore={onSaveScore}
               variant="feed"
+              readOnly={readOnly}
             />
           </div>
         ))}

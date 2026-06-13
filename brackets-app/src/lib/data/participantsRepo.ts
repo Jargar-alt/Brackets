@@ -4,8 +4,6 @@ import {
   deleteDoc,
   doc,
   onSnapshot,
-  orderBy,
-  query,
   serverTimestamp,
   updateDoc
 } from "firebase/firestore";
@@ -16,27 +14,33 @@ function participantsCollection(tournamentId: string) {
   return collection(db, "tournaments", tournamentId, "participants");
 }
 
+function sortParticipants(participants: Participant[]): Participant[] {
+  return [...participants].sort((a, b) => a.seed - b.seed || a.name.localeCompare(b.name));
+}
+
 export function subscribeToParticipants(
   tournamentId: string,
-  onData: (participants: Participant[]) => void
+  onData: (participants: Participant[]) => void,
+  onError?: (error: Error) => void
 ): () => void {
-  const q = query(participantsCollection(tournamentId), orderBy("seed", "asc"));
   return onSnapshot(
-    q,
+    participantsCollection(tournamentId),
     (snap) => {
       onData(
-        snap.docs.map((d) => {
-          const data = d.data();
-          return {
-            id: d.id,
-            name: data.name ?? "Unknown",
-            seed: data.seed ?? 9999,
-            createdAt: data.createdAt?.toMillis?.() ?? Date.now()
-          } as Participant;
-        })
+        sortParticipants(
+          snap.docs.map((d) => {
+            const data = d.data();
+            return {
+              id: d.id,
+              name: data.name ?? "Unknown",
+              seed: data.seed ?? 9999,
+              createdAt: data.createdAt?.toMillis?.() ?? Date.now()
+            } as Participant;
+          })
+        )
       );
     },
-    () => onData([])
+    (error) => onError?.(error)
   );
 }
 
