@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { TournamentFormat, Team, Match, TournamentRules, SetScore } from './types';
 import {
   generateSingleElimination,
@@ -24,7 +24,6 @@ import { TeamCalculator } from './components/TeamCalculator';
 import { CourtScheduleView } from './components/CourtScheduleView';
 import { EliminationCourtView } from './components/EliminationCourtView';
 import { Trophy, Play, Plus, Trash2, LayoutGrid, GitMerge, Users, Share2, LogIn, ShieldCheck, Info, RefreshCw, CheckCircle, Home, ExternalLink, Copy } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
 import { cn, stripUndefined } from './lib/utils';
 import { db, auth, isFirebaseConfigured } from './firebase';
 import { 
@@ -52,6 +51,7 @@ import { matchToFirestore } from './lib/matchFirestore';
 import { matchesNeedNetReconcile, reconcileMatchNets } from './lib/reconcileNets';
 import { readLocalStorageJson, normalizeActiveNets } from './lib/persistence';
 import { DEFAULT_RULES, sanitizeRules } from './lib/tournament/rules';
+import { getChangedMatches, matchesSyncEqual, teamsSyncEqual } from './lib/matchSync';
 
 const DEFAULT_LOCAL_TEAMS: Team[] = [
   { id: '1', name: 'Team 1' },
@@ -128,27 +128,39 @@ export default function App() {
   );
   const [banner, setBanner] = useState<BannerMessage>(null);
   const reconcileKeyRef = useRef<string | null>(null);
-  const scoreBusyRef = useRef(false);
+  const scoringMatchesRef = useRef<Set<string>>(new Set());
+  const teamNameTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const syncRef = useRef({ isCreator, isStarted, isFinished, format, numNets });
   syncRef.current = { isCreator, isStarted, isFinished, format, numNets };
 
-  // Persistence for local mode and tournamentId
+  useEffect(() => {
+    const timers = teamNameTimersRef.current;
+    return () => {
+      for (const t of timers.values()) clearTimeout(t);
+      timers.clear();
+    };
+  }, []);
+
+  // Persistence for local mode — debounced so scoring doesn't block the main thread
   useEffect(() => {
     if (tournamentId) {
       localStorage.setItem('tournament_id', tournamentId);
       return;
     }
-    localStorage.removeItem('tournament_id');
-    localStorage.setItem('tournament_teams', JSON.stringify(teams));
-    localStorage.setItem('tournament_matches', JSON.stringify(matches));
-    localStorage.setItem('tournament_queue', JSON.stringify(queue));
-    localStorage.setItem('tournament_activeNets', JSON.stringify(activeNets));
-    localStorage.setItem('tournament_format', format);
-    localStorage.setItem('tournament_isStarted', String(isStarted));
-    localStorage.setItem('tournament_isFinished', String(isFinished));
-    localStorage.setItem('tournament_activeTab', activeTab);
-    localStorage.setItem('tournament_numNets', String(numNets));
-    localStorage.setItem('tournament_rules', JSON.stringify(rules));
+    const timer = window.setTimeout(() => {
+      localStorage.removeItem('tournament_id');
+      localStorage.setItem('tournament_teams', JSON.stringify(teams));
+      localStorage.setItem('tournament_matches', JSON.stringify(matches));
+      localStorage.setItem('tournament_queue', JSON.stringify(queue));
+      localStorage.setItem('tournament_activeNets', JSON.stringify(activeNets));
+      localStorage.setItem('tournament_format', format);
+      localStorage.setItem('tournament_isStarted', String(isStarted));
+      localStorage.setItem('tournament_isFinished', String(isFinished));
+      localStorage.setItem('tournament_activeTab', activeTab);
+      localStorage.setItem('tournament_numNets', String(numNets));
+      localStorage.setItem('tournament_rules', JSON.stringify(rules));
+    }, 300);
+    return () => window.clearTimeout(timer);
   }, [teams, matches, queue, activeNets, format, isStarted, isFinished, activeTab, numNets, rules, tournamentId]);
 
   useEffect(() => {
@@ -217,19 +229,42 @@ export default function App() {
       }
       const data = snapshot.data();
       const allowedFmt: TournamentFormat[] = ['single', 'double', 'pool', 'casual', 'winners-list'];
-      setFormat(
-        allowedFmt.includes(data.format as TournamentFormat)
-          ? (data.format as TournamentFormat)
-          : 'single'
-      );
-      setIsStarted(!!data.isStarted);
-      setIsFinished(!!data.isFinished);
-      setRules(sanitizeRules(data.rules as TournamentRules | undefined));
-      setInviteCode(data.inviteCode || '');
-      setIsCreator(data.creatorId === user?.uid);
-      setNumNets(typeof data.numNets === 'number' && data.numNets > 0 ? data.numNets : 1);
-      setQueue(Array.isArray(data.queue) ? data.queue : []);
-      setActiveNets(normalizeActiveNets(data.activeNets));
+      const nextFormat = allowedFmt.includes(data.format as TournamentFormat)
+        ? (data.format as TournamentFormat)
+        : 'single';
+      setFormat(prev => (prev === nextFormat ? prev : nextFormat));
+      setIsStarted(prev => {
+        const next = !!data.isStarted;
+        return prev === next ? prev : next;
+      });
+      setIsFinished(prev => {
+        const next = !!data.isFinished;
+        return prev === next ? prev : next;
+      });
+      setRules(prev => {
+        const next = sanitizeRules(data.rules as TournamentRules | undefined);
+        return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
+      });
+      setInviteCode(prev => {
+        const next = data.inviteCode || '';
+        return prev === next ? prev : next;
+      });
+      setIsCreator(prev => {
+        const next = data.creatorId === user?.uid;
+        return prev === next ? prev : next;
+      });
+      setNumNets(prev => {
+        const next = typeof data.numNets === 'number' && data.numNets > 0 ? data.numNets : 1;
+        return prev === next ? prev : next;
+      });
+      setQueue(prev => {
+        const next = Array.isArray(data.queue) ? data.queue : [];
+        return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
+      });
+      setActiveNets(prev => {
+        const next = normalizeActiveNets(data.activeNets);
+        return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
+      });
       setCloudSyncing(false);
     }, err => {
       console.error('[Firestore] tournament subscription failed:', err);
@@ -244,7 +279,7 @@ export default function App() {
           const data = d.data() as Team;
           return { ...data, id: data.id ?? d.id };
         });
-        setTeams(teamsData);
+        setTeams(prev => (teamsSyncEqual(prev, teamsData) ? prev : teamsData));
         setCloudSyncing(false);
       },
       err => {
@@ -273,21 +308,25 @@ export default function App() {
           reconcileKeyRef.current !== reconcileKey
         ) {
           reconcileKeyRef.current = reconcileKey;
+          const before = matchesData;
           matchesData = reconcileMatchNets(matchesData, nets, fmt);
-          void Promise.all(
-            matchesData.map(m =>
-              setDoc(
-                doc(db, 'tournaments', tournamentId, 'matches', m.id),
-                matchToFirestore(m)
+          const changed = getChangedMatches(matchesData, before);
+          if (changed.length > 0) {
+            void Promise.all(
+              changed.map(m =>
+                setDoc(
+                  doc(db, 'tournaments', tournamentId, 'matches', m.id),
+                  matchToFirestore(m)
+                )
               )
-            )
-          ).catch(err => {
-            console.error('[Firestore] net reconcile failed:', err);
-            reconcileKeyRef.current = null;
-            setBanner({ type: 'error', message: formatFirebaseError(err) });
-          });
+            ).catch(err => {
+              console.error('[Firestore] net reconcile failed:', err);
+              reconcileKeyRef.current = null;
+              setBanner({ type: 'error', message: formatFirebaseError(err) });
+            });
+          }
         }
-        setMatches(matchesData);
+        setMatches(prev => (matchesSyncEqual(prev, matchesData) ? prev : matchesData));
         setCloudSyncing(false);
       },
       err => {
@@ -424,15 +463,21 @@ export default function App() {
   };
 
   const updateTeamName = async (id: string, name: string) => {
-    try {
-      if (tournamentId && db) {
-        await updateDoc(doc(db, 'tournaments', tournamentId, 'teams', id), { name });
-      } else {
-        setTeams(teams.map(t => (t.id === id ? { ...t, name } : t)));
-      }
-    } catch (err) {
-      console.error('[updateTeamName] failed:', err);
-      setBanner({ type: 'error', message: formatFirebaseError(err) });
+    setTeams(prev => prev.map(t => (t.id === id ? { ...t, name } : t)));
+    if (tournamentId && db) {
+      const timers = teamNameTimersRef.current;
+      const prevTimer = timers.get(id);
+      if (prevTimer) clearTimeout(prevTimer);
+      timers.set(
+        id,
+        setTimeout(() => {
+          timers.delete(id);
+          void updateDoc(doc(db, 'tournaments', tournamentId, 'teams', id), { name }).catch(err => {
+            console.error('[updateTeamName] failed:', err);
+            setBanner({ type: 'error', message: formatFirebaseError(err) });
+          });
+        }, 400)
+      );
     }
   };
 
@@ -808,21 +853,20 @@ export default function App() {
     }
   };
 
-  const updateScore = async (matchId: string, sets: SetScore[]) => {
+  const updateScore = useCallback(async (matchId: string, sets: SetScore[]) => {
     const outcome = matchOutcomeFromSets(sets, rules);
     if (!outcome.ok) return;
 
-    if (scoreBusyRef.current) {
-      setBanner({ type: 'info', message: 'Still saving the last score — try again in a moment.' });
-      return;
-    }
+    if (scoringMatchesRef.current.has(matchId)) return;
 
     if (tournamentId && db && !isCreator) {
       setBanner({ type: 'error', message: 'Only the tournament creator can enter scores.' });
       return;
     }
 
-    scoreBusyRef.current = true;
+    scoringMatchesRef.current.add(matchId);
+    const baselineMatches = matches;
+
     try {
 
     const updatedMatches = [...matches];
@@ -910,62 +954,89 @@ export default function App() {
           round: (currentMatch.round || 1) + 1,
           netIndex
         };
-        
-        if (tournamentId && db) {
-          try {
-            await setDoc(doc(db, 'tournaments', tournamentId, 'matches', matchId), matchToFirestore(currentMatch));
-            await setDoc(doc(db, 'tournaments', tournamentId, 'matches', nextMatchId), matchToFirestore(nextMatch));
-            const t1Wins = nextTeam1Id === winnerId && !reachedMax ? updatedWinnerWins : 0;
-            await updateDoc(doc(db, 'tournaments', tournamentId, 'teams', nextTeam1Id), { consecutiveWins: t1Wins });
-            if (nextTeam2Id) {
-              await updateDoc(doc(db, 'tournaments', tournamentId, 'teams', nextTeam2Id), { consecutiveWins: 0 });
-            }
-            await updateDoc(doc(db, 'tournaments', tournamentId, 'teams', loserId), { consecutiveWins: 0 });
-            await updateDoc(doc(db, 'tournaments', tournamentId), {
-              queue: newQueue,
-              [`activeNets.${netIndex}`]: nextMatchId
-            });
-          } catch (err) {
-            console.error('[Firestore] winners-list score save failed:', err);
-            setBanner({ type: 'error', message: formatFirebaseError(err) });
-          }
-        } else {
-          setMatches([...updatedMatches, nextMatch]);
-          setQueue(newQueue);
-          setActiveNets({ ...activeNets, [netIndex]: nextMatchId });
-          setTeams(teams.map(t => {
-            if (t.id === nextTeam1Id) return { ...t, consecutiveWins: nextTeam1Id === winnerId && !reachedMax ? updatedWinnerWins : 0 };
+
+        const nextMatches = [...updatedMatches, nextMatch];
+        const t1Wins = nextTeam1Id === winnerId && !reachedMax ? updatedWinnerWins : 0;
+        setMatches(nextMatches);
+        setQueue(newQueue);
+        setActiveNets({ ...activeNets, [netIndex]: nextMatchId });
+        setTeams(prev =>
+          prev.map(t => {
+            if (t.id === nextTeam1Id) return { ...t, consecutiveWins: t1Wins };
             if (nextTeam2Id && t.id === nextTeam2Id) return { ...t, consecutiveWins: 0 };
             if (t.id === loserId) return { ...t, consecutiveWins: 0 };
             return t;
-          }));
+          })
+        );
+
+        if (tournamentId && db) {
+          void (async () => {
+            try {
+              await setDoc(
+                doc(db, 'tournaments', tournamentId, 'matches', matchId),
+                matchToFirestore(currentMatch)
+              );
+              await setDoc(
+                doc(db, 'tournaments', tournamentId, 'matches', nextMatchId),
+                matchToFirestore(nextMatch)
+              );
+              await updateDoc(doc(db, 'tournaments', tournamentId, 'teams', nextTeam1Id), {
+                consecutiveWins: t1Wins
+              });
+              if (nextTeam2Id) {
+                await updateDoc(doc(db, 'tournaments', tournamentId, 'teams', nextTeam2Id), {
+                  consecutiveWins: 0
+                });
+              }
+              await updateDoc(doc(db, 'tournaments', tournamentId, 'teams', loserId), {
+                consecutiveWins: 0
+              });
+              await updateDoc(doc(db, 'tournaments', tournamentId), {
+                queue: newQueue,
+                [`activeNets.${netIndex}`]: nextMatchId
+              });
+            } catch (err) {
+              console.error('[Firestore] winners-list score save failed:', err);
+              setBanner({ type: 'error', message: formatFirebaseError(err) });
+            }
+          })();
         }
       } else {
-        // Net becomes empty
-        if (tournamentId && db) {
-          try {
-            await setDoc(doc(db, 'tournaments', tournamentId, 'matches', matchId), matchToFirestore(currentMatch));
-            await updateDoc(doc(db, 'tournaments', tournamentId, 'teams', winnerId), {
-              consecutiveWins: reachedMax ? 0 : updatedWinnerWins
-            });
-            await updateDoc(doc(db, 'tournaments', tournamentId, 'teams', loserId), { consecutiveWins: 0 });
-            await updateDoc(doc(db, 'tournaments', tournamentId), {
-              queue: newQueue,
-              [`activeNets.${netIndex}`]: null
-            });
-          } catch (err) {
-            console.error('[Firestore] winners-list score save failed:', err);
-            setBanner({ type: 'error', message: formatFirebaseError(err) });
-          }
-        } else {
-          setMatches(updatedMatches);
-          setQueue(newQueue);
-          setActiveNets({ ...activeNets, [netIndex]: null });
-          setTeams(teams.map(t => {
-            if (t.id === winnerId) return { ...t, consecutiveWins: reachedMax ? 0 : updatedWinnerWins };
+        setMatches(updatedMatches);
+        setQueue(newQueue);
+        setActiveNets({ ...activeNets, [netIndex]: null });
+        setTeams(prev =>
+          prev.map(t => {
+            if (t.id === winnerId) {
+              return { ...t, consecutiveWins: reachedMax ? 0 : updatedWinnerWins };
+            }
             if (t.id === loserId) return { ...t, consecutiveWins: 0 };
             return t;
-          }));
+          })
+        );
+
+        if (tournamentId && db) {
+          void (async () => {
+            try {
+              await setDoc(
+                doc(db, 'tournaments', tournamentId, 'matches', matchId),
+                matchToFirestore(currentMatch)
+              );
+              await updateDoc(doc(db, 'tournaments', tournamentId, 'teams', winnerId), {
+                consecutiveWins: reachedMax ? 0 : updatedWinnerWins
+              });
+              await updateDoc(doc(db, 'tournaments', tournamentId, 'teams', loserId), {
+                consecutiveWins: 0
+              });
+              await updateDoc(doc(db, 'tournaments', tournamentId), {
+                queue: newQueue,
+                [`activeNets.${netIndex}`]: null
+              });
+            } catch (err) {
+              console.error('[Firestore] winners-list score save failed:', err);
+              setBanner({ type: 'error', message: formatFirebaseError(err) });
+            }
+          })();
         }
       }
       return;
@@ -1008,42 +1079,56 @@ export default function App() {
 
     const bracketStillDecided = isTournamentDecided(format, matchesWithNets);
 
+    setMatches(matchesWithNets);
+    if (tournamentComplete) {
+      setIsFinished(true);
+    } else if (isFinished && !bracketStillDecided) {
+      setIsFinished(false);
+    }
+
     if (tournamentId && db) {
-      try {
-        await setDoc(doc(db, 'tournaments', tournamentId, 'matches', matchId), matchToFirestore(currentMatch));
-
-        for (const m of matchesWithNets) {
-          const originalMatch = matches.find(om => om.id === m.id);
-          if (JSON.stringify(m) !== JSON.stringify(originalMatch)) {
-            if (m.id !== matchId) {
-              await setDoc(doc(db, 'tournaments', tournamentId, 'matches', m.id), matchToFirestore(m));
-            }
+      const changedOthers = getChangedMatches(matchesWithNets, baselineMatches).filter(
+        m => m.id !== matchId
+      );
+      void (async () => {
+        try {
+          await setDoc(
+            doc(db, 'tournaments', tournamentId, 'matches', matchId),
+            matchToFirestore(currentMatch)
+          );
+          if (changedOthers.length > 0) {
+            await Promise.all(
+              changedOthers.map(m =>
+                setDoc(doc(db, 'tournaments', tournamentId, 'matches', m.id), matchToFirestore(m))
+              )
+            );
           }
+          if (tournamentComplete) {
+            await updateDoc(doc(db, 'tournaments', tournamentId), { isFinished: true });
+          } else if (isFinished && !bracketStillDecided) {
+            await updateDoc(doc(db, 'tournaments', tournamentId), { isFinished: false });
+          }
+        } catch (err) {
+          console.error('[Firestore] score save failed:', err);
+          setBanner({ type: 'error', message: formatFirebaseError(err) });
         }
-
-        if (tournamentComplete) {
-          await updateDoc(doc(db, 'tournaments', tournamentId), { isFinished: true });
-          setIsFinished(true);
-        } else if (isFinished && !bracketStillDecided) {
-          await updateDoc(doc(db, 'tournaments', tournamentId), { isFinished: false });
-          setIsFinished(false);
-        }
-      } catch (err) {
-        console.error('[Firestore] score save failed:', err);
-        setBanner({ type: 'error', message: formatFirebaseError(err) });
-      }
-    } else {
-      setMatches(matchesWithNets);
-      if (tournamentComplete) {
-        setIsFinished(true);
-      } else if (isFinished && !bracketStillDecided) {
-        setIsFinished(false);
-      }
+      })();
     }
     } finally {
-      scoreBusyRef.current = false;
+      scoringMatchesRef.current.delete(matchId);
     }
-  };
+  }, [
+    matches,
+    teams,
+    format,
+    rules,
+    tournamentId,
+    isCreator,
+    isFinished,
+    numNets,
+    queue,
+    activeNets
+  ]);
 
   const finishTournament = async () => {
     if (window.confirm("Finish the tournament? This will finalize the results.")) {
@@ -1609,14 +1694,9 @@ export default function App() {
                     </div>
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <AnimatePresence mode="popLayout">
                     {teams.map((team, index) => (
-                      <motion.div
+                      <div
                         key={team.id}
-                        layout
-                        initial={{ opacity: 0, scale: 0.9 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.9 }}
                         className="flex items-center gap-3 rounded-xl border border-white/12 bg-surface p-4 group active:bg-surface-overlay transition-colors"
                       >
                         <div className="flex flex-col items-center justify-center gap-0.5">
@@ -1641,9 +1721,8 @@ export default function App() {
                         >
                           <Trash2 className="w-5 h-5" />
                         </button>
-                      </motion.div>
+                      </div>
                     ))}
-                  </AnimatePresence>
                 </div>
                   </div>
                   {activeTab === 'tournaments' && (

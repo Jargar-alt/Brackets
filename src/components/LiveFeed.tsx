@@ -1,3 +1,4 @@
+import { memo, useMemo } from 'react';
 import type { Match, Team } from '../types';
 import { countLiveMatches, isFeedMatch, sortMatchesForLiveFeed } from '../lib/matchStatus';
 import { LiveMatchCard } from './LiveMatchCard';
@@ -7,9 +8,12 @@ interface Props {
   teams: Team[];
 }
 
-export function LiveFeed({ matches, teams }: Props) {
-  const feedMatches = sortMatchesForLiveFeed(matches).filter(isFeedMatch);
-  const liveCount = countLiveMatches(matches);
+export const LiveFeed = memo(function LiveFeed({ matches, teams }: Props) {
+  const feedMatches = useMemo(
+    () => sortMatchesForLiveFeed(matches).filter(isFeedMatch),
+    [matches]
+  );
+  const liveCount = useMemo(() => countLiveMatches(matches), [matches]);
 
   if (!matches.length) return null;
 
@@ -32,16 +36,12 @@ export function LiveFeed({ matches, teams }: Props) {
         </p>
       </div>
       <div className="scrollbar-hide -mx-2 flex snap-x snap-mandatory gap-3 overflow-x-auto px-2 pb-2 sm:-mx-1 sm:px-1">
-        {feedMatches.map((match, index) => (
-          <div
-            key={match.id}
-            className="snap-start animate-fade-up"
-            style={{ animationDelay: `${index * 40}ms` }}
-          >
+        {feedMatches.map(match => (
+          <div key={match.id} className="snap-start">
             <LiveMatchCard match={match} teams={teams} />
           </div>
         ))}
       </div>
     </section>
   );
-}
+});

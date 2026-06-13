@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { memo, useMemo } from 'react';
 import { Match, Team, TournamentRules, SetScore } from '../types';
 import { cn } from '../lib/utils';
 import { Layout, Clock, Users } from 'lucide-react';
@@ -23,7 +23,7 @@ export interface CourtScheduleViewProps {
   targetGamesPerTeam?: number;
 }
 
-export const CourtScheduleView: React.FC<CourtScheduleViewProps> = ({
+export const CourtScheduleView = memo(function CourtScheduleView({
   matches,
   teams,
   numNets,
@@ -35,7 +35,7 @@ export const CourtScheduleView: React.FC<CourtScheduleViewProps> = ({
   queueHelpText = 'Matches fill nets in order as games finish. Enter scores on active courts below.',
   scheduleKind = 'round-robin',
   targetGamesPerTeam
-}) => {
+}: CourtScheduleViewProps) {
   const getTeam = (id: string | null | undefined) =>
     id ? teams.find(t => t.id === id) ?? null : null;
 
@@ -243,4 +243,4 @@ export const CourtScheduleView: React.FC<CourtScheduleViewProps> = ({
       />
     </div>
   );
-};
+});

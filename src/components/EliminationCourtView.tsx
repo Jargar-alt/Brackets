@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, memo } from 'react';
 import { Match, SetScore, Team, TournamentRules } from '../types';
 import { cn } from '../lib/utils';
 import { GitMerge } from 'lucide-react';
@@ -118,7 +118,7 @@ function BracketReferenceStrip({
   );
 }
 
-export const EliminationCourtView: React.FC<EliminationCourtViewProps> = ({
+export const EliminationCourtView = memo(function EliminationCourtView({
   matches,
   teams,
   numNets,
@@ -128,7 +128,7 @@ export const EliminationCourtView: React.FC<EliminationCourtViewProps> = ({
   highlightTeamId,
   title = 'Bracket',
   variant
-}) => {
+}: EliminationCourtViewProps) {
   const queueHelpText =
     variant === 'double'
       ? 'Double elim: round 1 winners bracket fills nets first. Later WB rounds wait until all WB round 1 scores are in.'
@@ -177,7 +177,7 @@ export const EliminationCourtView: React.FC<EliminationCourtViewProps> = ({
       </CollapsibleSection>
     </div>
   );
-};
+});
 
 // Re-export for LiveResultsView
 export { BracketReferenceStrip };

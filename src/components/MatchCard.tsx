@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { Match, Team, TournamentRules, SetScore } from '../types';
 import { AlertCircle } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { matchIsOnNet } from '../lib/matchSchedule';
 import { isValidCompletedSet, validateMatchSets } from '../lib/tournament/scoring';
+import { matchSyncFingerprint } from '../lib/matchSync';
 
 interface MatchCardProps {
   match: Match;
@@ -27,14 +28,14 @@ function countSetWins(sets: SetScore[], rules: TournamentRules): { w1: number; w
   return { w1, w2 };
 }
 
-export const MatchCard: React.FC<MatchCardProps> = ({
+export const MatchCard = memo(function MatchCard({
   match,
   teams,
   onUpdateScore,
   disabled,
   rules,
   showNetBadge = true
-}) => {
+}: MatchCardProps) {
   const r = rules ?? {
     pointsToWin: 25,
     bestOf: 1,
@@ -255,4 +256,13 @@ export const MatchCard: React.FC<MatchCardProps> = ({
       </div>
     </div>
   );
-};
+}, (prev, next) => {
+  if (prev.disabled !== next.disabled) return false;
+  if (prev.showNetBadge !== next.showNetBadge) return false;
+  if (matchSyncFingerprint(prev.match) !== matchSyncFingerprint(next.match)) return false;
+  if (prev.teams.length !== next.teams.length) return false;
+  return prev.teams.every((t, i) => {
+    const o = next.teams[i];
+    return o && t.id === o.id && t.name === o.name;
+  });
+});
