@@ -1,20 +1,38 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Brackets — tournament director
 
-# Run and deploy your AI Studio app
+Volleyball bracket app with **net assignment**, live scoring, and a public live board.
 
-This contains everything you need to run your app locally.
+## Run locally
 
-View your app in AI Studio: https://ai.studio/apps/33820062-6cfb-4e57-ae7b-fad5931c1a7d
+```bash
+npm install
+cp .env.example .env.local   # add VITE_FIREBASE_* keys
+npm run dev                  # http://localhost:3000
+```
 
-## Run Locally
+Sign in with Google, create a tournament, add teams, **Start Tournament**.
 
-**Prerequisites:**  Node.js
+## Deploy to Vercel
 
+Push to git — Vercel builds from the repo root.
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+Set all `VITE_FIREBASE_*` env vars in Vercel project settings (see `.env.example`).
+
+## Deploy Firestore
+
+```bash
+npx -y firebase-tools@latest login
+npx -y firebase-tools@latest use brackets-app-93404
+npm run deploy:firestore
+```
+
+## Firebase setup
+
+1. Enable **Google** sign-in (Authentication → Sign-in method)
+2. Add your Vercel domain to Authorized domains
+3. Deploy `firestore.rules` from this directory
+4. Copy web app config into Vercel env vars
+
+## Public live board
+
+Share: `https://YOUR_HOST/live/<tournamentId>`

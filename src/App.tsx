@@ -231,15 +231,29 @@ export default function App() {
       }
     });
 
-    const unsubTeams = onSnapshot(collection(db, 'tournaments', tournamentId, 'teams'), (snapshot) => {
-      const teamsData = snapshot.docs.map(d => d.data() as Team);
-      setTeams(teamsData.length > 0 ? teamsData : teams);
-    });
+    const unsubTeams = onSnapshot(
+      collection(db, 'tournaments', tournamentId, 'teams'),
+      snapshot => {
+        const teamsData = snapshot.docs.map(d => {
+          const data = d.data() as Team;
+          return { ...data, id: data.id ?? d.id };
+        });
+        setTeams(teamsData.length > 0 ? teamsData : teams);
+      },
+      err => console.error('[Firestore] teams subscription failed:', err)
+    );
 
-    const unsubMatches = onSnapshot(collection(db, 'tournaments', tournamentId, 'matches'), (snapshot) => {
-      const matchesData = snapshot.docs.map(d => d.data() as Match);
-      setMatches(matchesData);
-    });
+    const unsubMatches = onSnapshot(
+      collection(db, 'tournaments', tournamentId, 'matches'),
+      snapshot => {
+        const matchesData = snapshot.docs.map(d => {
+          const data = d.data() as Match;
+          return { ...data, id: data.id ?? d.id };
+        });
+        setMatches(matchesData);
+      },
+      err => console.error('[Firestore] matches subscription failed:', err)
+    );
 
     return () => {
       unsubTournament();
@@ -249,7 +263,10 @@ export default function App() {
   }, [tournamentId, user]);
 
   const createTournament = async () => {
-    if (!user || !db) return;
+    if (!user || !db) {
+      window.alert(user ? 'Cloud sync is not configured. Add VITE_FIREBASE_* to .env and restart.' : 'Sign in with Google to create a cloud tournament.');
+      return;
+    }
     const code = Math.random().toString(36).substring(2, 8).toUpperCase();
     const newTournamentRef = doc(collection(db, 'tournaments'));
     const id = newTournamentRef.id;
@@ -358,6 +375,15 @@ export default function App() {
   };
 
   const startTournament = async () => {
+    if (teams.length < 2 && format !== 'winners-list') {
+      window.alert('Add at least 2 teams before starting.');
+      return;
+    }
+    if (tournamentId && db && !isCreator) {
+      window.alert('Only the tournament creator can start the bracket.');
+      return;
+    }
+
     let initialMatches: Match[] = [];
 
     if (format === 'single') {
@@ -669,6 +695,11 @@ export default function App() {
     const outcome = matchOutcomeFromSets(sets, rules);
     if (!outcome.ok) return;
 
+    if (tournamentId && db && !isCreator) {
+      window.alert('Only the tournament creator can enter scores.');
+      return;
+    }
+
     const updatedMatches = [...matches];
     const matchIdx = updatedMatches.findIndex(m => m.id === matchId);
     if (matchIdx === -1) return;
@@ -837,19 +868,28 @@ export default function App() {
     }
 
     if (tournamentId && db) {
-      await setDoc(doc(db, 'tournaments', tournamentId, 'matches', matchId), stripUndefined(currentMatch));
+      try {
+        await setDoc(doc(db, 'tournaments', tournamentId, 'matches', matchId), stripUndefined(currentMatch));
 
-      for (const m of matchesWithNets) {
-        const originalMatch = matches.find(om => om.id === m.id);
-        if (JSON.stringify(m) !== JSON.stringify(originalMatch)) {
-          if (m.id !== matchId) {
-            await setDoc(doc(db, 'tournaments', tournamentId, 'matches', m.id), stripUndefined(m));
+        for (const m of matchesWithNets) {
+          const originalMatch = matches.find(om => om.id === m.id);
+          if (JSON.stringify(m) !== JSON.stringify(originalMatch)) {
+            if (m.id !== matchId) {
+              await setDoc(doc(db, 'tournaments', tournamentId, 'matches', m.id), stripUndefined(m));
+            }
           }
         }
-      }
 
-      if (tournamentComplete) {
-        await updateDoc(doc(db, 'tournaments', tournamentId), { isFinished: true });
+        if (tournamentComplete) {
+          await updateDoc(doc(db, 'tournaments', tournamentId), { isFinished: true });
+        }
+      } catch (err) {
+        console.error('[Firestore] score save failed:', err);
+        window.alert(
+          err instanceof Error
+            ? `Could not save score: ${err.message}`
+            : 'Could not save score. Check that you are signed in as the tournament creator.'
+        );
       }
     } else {
       setMatches(matchesWithNets);
