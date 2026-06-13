@@ -44,6 +44,7 @@ import { signInWithGoogle } from './lib/googleSignIn';
 
 import { WinnersListView } from './components/WinnersListView';
 import { LiveFeed } from './components/LiveFeed';
+import { FinishedTournamentView } from './components/FinishedTournamentView';
 import { StatusBanner, type BannerMessage } from './components/StatusBanner';
 import { validateBracketSeed } from './lib/validateBracket';
 import { formatFirebaseError } from './lib/firebaseErrors';
@@ -326,7 +327,12 @@ export default function App() {
             });
           }
         }
-        setMatches(prev => (matchesSyncEqual(prev, matchesData) ? prev : matchesData));
+        setMatches(prev => {
+          if (syncRef.current.isFinished && matchesSyncEqual(prev, matchesData)) {
+            return prev;
+          }
+          return matchesSyncEqual(prev, matchesData) ? prev : matchesData;
+        });
         setCloudSyncing(false);
       },
       err => {
@@ -713,34 +719,36 @@ export default function App() {
   };
 
   const resetToSetup = async () => {
-    if (window.confirm("Start a new tournament? This will clear current results.")) {
+    if (!window.confirm('Start a new tournament? This will clear current results.')) return;
+
+    const tid = tournamentId;
+    setMatches([]);
+    setQueue([]);
+    setActiveNets({});
+    setIsStarted(false);
+    setIsFinished(false);
+    setTournamentId(null);
+    reconcileKeyRef.current = null;
+    localStorage.removeItem('tournament_id');
+
+    if (!tid || !db) return;
+
+    void (async () => {
       try {
-        if (tournamentId && db) {
-          const matchesRef = collection(db, 'tournaments', tournamentId, 'matches');
-          const snapshot = await getDocs(matchesRef);
-          await Promise.all(snapshot.docs.map(d => deleteDoc(d.ref)));
-
-          await updateDoc(doc(db, 'tournaments', tournamentId), {
-            isStarted: false,
-            isFinished: false,
-            queue: [],
-            activeNets: {}
-          });
-        }
-
-        setMatches([]);
-        setQueue([]);
-        setActiveNets({});
-        setIsStarted(false);
-        setIsFinished(false);
-        setTournamentId(null);
-        reconcileKeyRef.current = null;
-        localStorage.removeItem('tournament_id');
+        const matchesRef = collection(db, 'tournaments', tid, 'matches');
+        const snapshot = await getDocs(matchesRef);
+        await Promise.all(snapshot.docs.map(d => deleteDoc(d.ref)));
+        await updateDoc(doc(db, 'tournaments', tid), {
+          isStarted: false,
+          isFinished: false,
+          queue: [],
+          activeNets: {}
+        });
       } catch (err) {
         console.error('[resetToSetup] failed:', err);
         setBanner({ type: 'error', message: formatFirebaseError(err) });
       }
-    }
+    })();
   };
 
   const resumeTournament = async () => {
@@ -1173,29 +1181,33 @@ export default function App() {
     }
   };
 
-  const exitToHome = async () => {
-    if (!isStarted) {
-      setIsStarted(false);
-      return;
-    }
+  const exitToHome = useCallback(async () => {
+    if (!isStarted) return;
+
     if (
+      !isFinished &&
       !window.confirm(
         'Return to the home screen? Live scores stay saved unless you reset or abort.'
       )
     ) {
       return;
     }
+
+    setIsStarted(false);
+
     if (tournamentId && !isCreator) {
       setTournamentId(null);
       localStorage.removeItem('tournament_id');
-      setIsStarted(false);
       return;
     }
+
     if (tournamentId && db && isCreator) {
-      await updateDoc(doc(db, 'tournaments', tournamentId), { isStarted: false });
+      void updateDoc(doc(db, 'tournaments', tournamentId), { isStarted: false }).catch(err => {
+        console.error('[exitToHome] failed:', err);
+        setBanner({ type: 'error', message: formatFirebaseError(err) });
+      });
     }
-    setIsStarted(false);
-  };
+  }, [isStarted, isFinished, tournamentId, isCreator]);
 
   const displayChampion = useMemo(
     () => (isFinished ? resolveDisplayChampion(format, matches, teams) : null),
@@ -2045,9 +2057,18 @@ export default function App() {
               </div>
             </div>
 
-            <LiveFeed matches={matches} teams={teams} />
+            {!isFinished && <LiveFeed matches={matches} teams={teams} />}
 
-            {format === 'winners-list' ? (
+            {isFinished ? (
+              <FinishedTournamentView
+                format={format}
+                matches={matches}
+                teams={teams}
+                championId={displayChampion?.id}
+                onGoHome={() => void exitToHome()}
+                onNewTournament={() => void resetToSetup()}
+              />
+            ) : format === 'winners-list' ? (
               <WinnersListView 
                 matches={matches} 
                 teams={teams} 
