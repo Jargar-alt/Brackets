@@ -14,12 +14,12 @@ export function LiveFeed({ matches, teams }: Props) {
   if (!matches.length) return null;
 
   return (
-    <section className="mb-8 animate-fade-up">
-      <div className="mb-4 flex items-end justify-between gap-3">
-        <div>
+    <section className="mb-6 animate-fade-up sm:mb-8">
+      <div className="mb-3 flex items-end justify-between gap-3 sm:mb-4">
+        <div className="min-w-0">
           <div className="mb-1 flex items-center gap-2">
             {liveCount > 0 && <span className="h-2 w-2 rounded-full bg-live animate-live-pulse" />}
-            <h2 className="text-2xl font-bold tracking-tight text-ink">Live</h2>
+            <h2 className="text-xl font-bold tracking-tight text-ink sm:text-2xl">Live</h2>
           </div>
           <p className="text-sm text-ink-secondary">
             {liveCount > 0
@@ -27,13 +27,17 @@ export function LiveFeed({ matches, teams }: Props) {
               : 'No active courts — queue and results below'}
           </p>
         </div>
-        <p className="shrink-0 text-xs font-medium uppercase tracking-[0.14em] text-ink-muted">
+        <p className="shrink-0 text-[10px] font-medium uppercase tracking-[0.14em] text-ink-secondary sm:text-xs">
           {feedMatches.length} shown
         </p>
       </div>
-      <div className="scrollbar-hide -mx-1 flex gap-3 overflow-x-auto px-1 pb-2">
+      <div className="scrollbar-hide -mx-2 flex snap-x snap-mandatory gap-3 overflow-x-auto px-2 pb-2 sm:-mx-1 sm:px-1">
         {feedMatches.map((match, index) => (
-          <div key={match.id} className="animate-fade-up" style={{ animationDelay: `${index * 40}ms` }}>
+          <div
+            key={match.id}
+            className="snap-start animate-fade-up"
+            style={{ animationDelay: `${index * 40}ms` }}
+          >
             <LiveMatchCard match={match} teams={teams} />
           </div>
         ))}

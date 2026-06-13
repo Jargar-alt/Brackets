@@ -55,13 +55,13 @@ export const WinnersListView: React.FC<WinnersListViewProps> = ({
           <span className="flex items-center gap-2">
             <Users className="w-4 h-4" />
             Waiting List
-            <span className="bg-[#000080] text-white px-2 py-0.5 text-xs font-bold border border-black">
+            <span className="rounded border border-accent/30 bg-accent/15 px-2 py-0.5 text-xs font-bold text-accent">
               {queue.length}
             </span>
           </span>
         </div>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <p className="text-xs font-bold text-black">Teams waiting for a court</p>
+          <p className="text-xs font-bold text-ink-secondary">Teams waiting for a court</p>
           {!isFinished && (
             <form onSubmit={handleAddTeam} className="flex gap-2 w-full sm:w-auto w95-inset p-1">
               <input
@@ -97,12 +97,12 @@ export const WinnersListView: React.FC<WinnersListViewProps> = ({
                   className="w95-panel py-3 flex items-center justify-between group"
                 >
                   <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-9 h-9 w95-inset text-sm font-bold text-black flex items-center justify-center flex-shrink-0">
+                    <div className="w-9 h-9 w95-inset text-sm font-bold text-ink flex items-center justify-center flex-shrink-0">
                       {index + 1}
                     </div>
                     <div className="min-w-0">
-                      <div className="text-sm font-bold text-black truncate">{team?.name}</div>
-                      <div className="text-[10px] font-bold uppercase tracking-wider text-black/60">Waiting</div>
+                      <div className="text-sm font-bold text-ink truncate">{team?.name}</div>
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-ink-muted">Waiting</div>
                     </div>
                   </div>
                   {isCreator && !isFinished && (
@@ -120,10 +120,10 @@ export const WinnersListView: React.FC<WinnersListViewProps> = ({
           </AnimatePresence>
           
           {queue.length === 0 && (
-            <div className="col-span-full py-10 text-center w95-inset border-2 border-dashed border-[#808080] text-black">
+            <div className="col-span-full py-10 text-center w95-inset rounded-lg border border-dashed border-white/15 text-ink-muted">
               <Users className="w-10 h-10 mx-auto mb-2 opacity-30" />
               <p className="text-sm font-bold uppercase">Queue empty</p>
-              <p className="text-xs mt-1 font-bold text-black/70">Add teams to start</p>
+              <p className="text-xs mt-1 font-bold text-ink-secondary">Add teams to start</p>
             </div>
           )}
         </div>
@@ -147,14 +147,14 @@ export const WinnersListView: React.FC<WinnersListViewProps> = ({
                 </button>
               ))}
               {teams.filter(t => !queue.includes(t.id) && !activeMatches.some(m => m.team1Id === t.id || m.team2Id === t.id)).length === 0 && (
-                <span className="text-xs font-bold text-black/60">All teams active</span>
+                <span className="text-xs font-bold text-ink-secondary">All teams active</span>
               )}
             </div>
           </div>
         )}
       </div>
 
-      <div className="h-0 border-t-2 border-[#808080]" />
+      <div className="h-0 border-t border-white/10" />
 
       {/* Nets Section */}
       <div className="space-y-4">
@@ -170,8 +170,8 @@ export const WinnersListView: React.FC<WinnersListViewProps> = ({
 
             return (
               <div key={i} className="w95-panel p-0 overflow-hidden flex flex-col">
-                <div className="w95-inset px-3 py-2 flex justify-between items-center border-b-2 border-[#808080]">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-black">Net {i + 1}</span>
+                <div className="flex items-center justify-between border-b border-white/10 bg-surface-raised px-3 py-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-ink">Net {i + 1}</span>
                   {match ? (
                     <div className="flex items-center gap-2">
                       {rules.winnerStays && rules.maxConsecutiveWins && (
@@ -186,22 +186,22 @@ export const WinnersListView: React.FC<WinnersListViewProps> = ({
                                 key={idx} 
                                 className={cn(
                                   "w-1.5 h-1.5 rounded-full transition-colors",
-                                  idx < Math.max(t1Wins, t2Wins) ? "bg-[#000080]" : "bg-[#c0c0c0]"
+                                  idx < Math.max(t1Wins, t2Wins) ? "bg-accent" : "bg-surface-overlay"
                                 )}
                               />
                             );
                           })}
                         </div>
                       )}
-                      <span className="flex items-center gap-1 text-[10px] font-bold text-black uppercase">
+                      <span className="flex items-center gap-1 text-[10px] font-bold text-live uppercase">
                         <Clock className="w-3 h-3" /> Live
                       </span>
                     </div>
                   ) : (
-                    <span className="text-[10px] font-bold text-black/60 uppercase">Idle</span>
+                    <span className="text-[10px] font-bold text-ink-muted uppercase">Idle</span>
                   )}
                 </div>
-                <div className="p-3 flex-1 bg-[#c0c0c0]">
+                <div className="p-3 flex-1 bg-surface">
                   {match ? (
                     <div className="space-y-4">
                       <MatchCard
@@ -213,26 +213,26 @@ export const WinnersListView: React.FC<WinnersListViewProps> = ({
                         showNetBadge={false}
                       />
                       {!match.team2Id && (
-                        <div className="flex items-center gap-2 px-2 py-1.5 w95-inset border border-black text-[10px] font-bold uppercase">
+                        <div className="flex items-center gap-2 px-2 py-1.5 w95-inset border border-white/12 text-[10px] font-bold uppercase text-ink-secondary">
                           Waiting for opponent
                         </div>
                       )}
                     </div>
                   ) : (
-                    <div className="h-[100px] flex flex-col items-center justify-center w95-inset border-2 border-dashed border-[#808080] text-black/50">
+                    <div className="h-[100px] flex flex-col items-center justify-center w95-inset rounded-lg border border-dashed border-white/15 text-ink-muted">
                       <Layout className="w-8 h-8 mb-2 opacity-40" />
                       <span className="text-xs font-bold">Empty</span>
                     </div>
                   )}
                 </div>
 
-                <div className="px-3 py-2 border-t-2 border-[#808080] flex items-center gap-2 bg-[#c0c0c0]">
-                  <ArrowRight className="w-3 h-3 shrink-0" />
-                  <span className="text-[10px] font-bold uppercase tracking-tight">Next:</span>
+                <div className="px-3 py-2 border-t border-white/10 flex items-center gap-2 bg-surface">
+                  <ArrowRight className="w-3 h-3 shrink-0 text-ink-muted" />
+                  <span className="text-[10px] font-bold uppercase tracking-tight text-ink-secondary">Next:</span>
                   <span
                     className={cn(
-                      'text-[11px] font-bold truncate text-black',
-                      !nextUpTeam && 'italic text-black/50'
+                      'text-[11px] font-bold truncate text-ink',
+                      !nextUpTeam && 'italic text-ink-muted'
                     )}
                   >
                     {nextUpTeam?.name || "No one in queue"}
@@ -257,22 +257,22 @@ export const WinnersListView: React.FC<WinnersListViewProps> = ({
                   <span
                     className={cn(
                       'text-xs font-bold truncate',
-                      match.winnerId === match.team1Id ? 'text-black underline' : 'text-black/50'
+                      match.winnerId === match.team1Id ? 'text-ink underline' : 'text-ink-muted'
                     )}
                   >
                     {getTeam(match.team1Id)?.name}
                   </span>
-                  <span className="text-[10px] text-black/40">vs</span>
+                  <span className="text-[10px] text-ink-muted">vs</span>
                   <span
                     className={cn(
                       'text-xs font-bold truncate',
-                      match.winnerId === match.team2Id ? 'text-black underline' : 'text-black/50'
+                      match.winnerId === match.team2Id ? 'text-ink underline' : 'text-ink-muted'
                     )}
                   >
                     {getTeam(match.team2Id)?.name}
                   </span>
                 </div>
-                <div className="text-[10px] font-bold uppercase text-black/70">
+                <div className="text-[10px] font-bold uppercase text-ink-secondary">
                   {match.score1} - {match.score2} sets
                 </div>
               </div>
@@ -280,7 +280,7 @@ export const WinnersListView: React.FC<WinnersListViewProps> = ({
             </div>
           ))}
           {completedMatches.length === 0 && (
-            <div className="col-span-full p-8 text-center w95-inset border-2 border-dashed border-[#808080] text-black/60 text-xs font-bold">
+            <div className="col-span-full p-8 text-center w95-inset rounded-lg border border-dashed border-white/15 text-ink-muted text-xs font-bold">
               No completed matches
             </div>
           )}

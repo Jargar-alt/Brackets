@@ -49,9 +49,9 @@ export function LiveByInviteRedirect() {
 
   if (!isFirebaseConfigured) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-zinc-100 p-6 text-center text-sm">
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-canvas p-6 text-center text-sm text-ink-secondary">
         <p>Firebase is not configured.</p>
-        <Link to="/" className="text-sky-700 underline">
+        <Link to="/" className="text-accent underline">
           <Home className="mb-1 inline h-4 w-4" /> Director setup
         </Link>
       </div>
@@ -59,12 +59,14 @@ export function LiveByInviteRedirect() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-zinc-100 p-6 text-center">
-      {status === 'loading' && <p className="text-sm font-semibold text-zinc-700">Opening tournament…</p>}
+    <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-canvas p-6 text-center text-ink">
+      {status === 'loading' && (
+        <p className="text-sm font-semibold text-ink-secondary">Opening tournament…</p>
+      )}
       {status === 'error' && (
         <>
-          <p className="max-w-md text-sm text-zinc-800">{message}</p>
-          <Link to="/" className="text-sky-700 underline">
+          <p className="max-w-md text-sm text-ink">{message}</p>
+          <Link to="/" className="text-accent underline">
             Back home
           </Link>
         </>

@@ -179,11 +179,11 @@ export const MatchCard: React.FC<MatchCardProps> = ({
       )}
 
       <div className="space-y-2">
-        <div className="px-1 text-[10px] font-bold uppercase tracking-wide text-ink-muted">{setLabel}</div>
+        <div className="px-1 text-[11px] font-bold uppercase tracking-wide text-ink-secondary">{setLabel}</div>
 
         <div
           className={cn(
-            'flex min-h-[52px] items-center justify-between rounded-lg border border-white/8 bg-surface p-2',
+            'flex min-h-[52px] items-center justify-between rounded-lg border border-white/12 bg-surface p-2.5',
             match.winnerId === team1?.id && team1 ? 'w95-row-winner' : ''
           )}
         >
@@ -201,7 +201,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
         </div>
         <div
           className={cn(
-            'flex min-h-[52px] items-center justify-between rounded-lg border border-white/8 bg-surface p-2',
+            'flex min-h-[52px] items-center justify-between rounded-lg border border-white/12 bg-surface p-2.5',
             match.winnerId === team2?.id && team2 ? 'w95-row-winner' : ''
           )}
         >
@@ -226,7 +226,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
         )}
 
         {r.winByTwo && !match.winnerId && team1 && team2 && (
-          <div className="pt-1 text-center text-[9px] font-semibold uppercase tracking-wider text-ink-muted">
+          <div className="pt-1 text-center text-[10px] font-semibold uppercase tracking-wider text-ink-secondary">
             Win by 2 per set
           </div>
         )}
@@ -247,7 +247,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({
         )}
 
         {match.winnerId && match.sets && match.sets.length > 0 && (
-          <div className="pt-1 font-mono text-[10px] text-black">
+          <div className="pt-1 font-mono text-[10px] text-ink-secondary">
             Final: {match.sets.map(s => `${s.team1}-${s.team2}`).join(', ')} ({match.score1}-{match.score2}{' '}
             sets)
           </div>

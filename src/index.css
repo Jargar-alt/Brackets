@@ -6,8 +6,8 @@
   --color-surface-raised: #2c2c2e;
   --color-surface-overlay: #3a3a3c;
   --color-ink: #ffffff;
-  --color-ink-secondary: rgba(255, 255, 255, 0.62);
-  --color-ink-muted: rgba(255, 255, 255, 0.38);
+  --color-ink-secondary: #aeaeb2;
+  --color-ink-muted: #8e8e93;
   --color-live: #ff453a;
   --color-win: #30d158;
   --color-tie: #ffd60a;
@@ -86,7 +86,7 @@
 }
 
 .glass-panel {
-  background: rgba(28, 28, 30, 0.82);
+  background: rgba(28, 28, 30, 0.92);
   backdrop-filter: blur(20px) saturate(160%);
   -webkit-backdrop-filter: blur(20px) saturate(160%);
 }
@@ -95,21 +95,42 @@
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
 }
 
-/* Remapped legacy w95 classes → Apple Sports dark */
+/* Option chips & panels */
+.chip {
+  @apply min-h-11 rounded-xl border border-white/14 bg-surface px-4 py-2.5 text-sm font-semibold text-ink transition-all hover:border-white/24 active:scale-[0.99];
+}
+
+.chip-active {
+  @apply border-accent/50 bg-accent/20 text-accent;
+}
+
+.panel-tint-win {
+  @apply rounded-xl border border-win/30 bg-win/10 p-4;
+}
+
+.panel-tint-accent {
+  @apply rounded-xl border border-accent/30 bg-accent/10 p-4;
+}
+
+.panel-tint-tie {
+  @apply rounded-xl border border-tie/35 bg-tie/10 p-4;
+}
+
+/* Remapped legacy w95 classes → readable dark theme */
 .w95-outset {
-  @apply rounded-card border border-white/8 bg-surface-raised shadow-sm;
+  @apply rounded-card border border-white/12 bg-surface-raised shadow-sm;
 }
 
 .w95-inset {
-  @apply rounded-lg border border-white/8 bg-surface/80;
+  @apply rounded-lg border border-white/12 bg-surface;
 }
 
 .w95-outset-sm {
-  @apply rounded-lg border border-white/8 bg-surface;
+  @apply rounded-lg border border-white/12 bg-surface;
 }
 
 .w95-btn {
-  @apply min-h-11 cursor-pointer select-none rounded-xl border border-white/10 bg-surface-raised px-3 py-2 text-sm font-semibold text-ink-secondary transition-colors hover:bg-white/5 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40;
+  @apply min-h-11 cursor-pointer select-none rounded-xl border border-white/14 bg-surface-raised px-3 py-2 text-sm font-semibold text-ink transition-colors hover:bg-white/8 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40;
 }
 
 .w95-btn-default {
@@ -117,55 +138,55 @@
 }
 
 .w95-toolbar {
-  @apply flex flex-wrap items-center gap-1.5 border-b border-white/8 bg-surface/90 p-2;
+  @apply flex flex-wrap items-center gap-2 border-b border-white/10 bg-surface px-2 py-2 sm:gap-1.5;
 }
 
 .w95-toolbtn {
-  @apply flex h-11 w-11 min-w-11 shrink-0 items-center justify-center rounded-lg border border-transparent text-ink-secondary hover:bg-white/5;
+  @apply flex h-11 w-11 min-w-11 shrink-0 items-center justify-center rounded-lg border border-transparent text-ink hover:bg-white/8;
 }
 
 .w95-titlebar {
-  @apply flex min-h-11 items-center justify-between gap-2 border-b border-white/8 bg-surface px-3 py-2 text-sm font-semibold text-ink;
+  @apply flex min-h-11 items-center justify-between gap-2 border-b border-white/10 bg-surface px-3 py-2 text-sm font-semibold text-ink;
 }
 
 .w95-window {
-  @apply flex min-h-0 flex-1 flex-col overflow-hidden rounded-card border border-white/8 bg-surface shadow-lg;
+  @apply flex min-h-0 flex-1 flex-col overflow-hidden rounded-card border border-white/12 bg-surface shadow-lg;
 }
 
 .w95-panel {
-  @apply rounded-card border border-white/8 bg-surface-raised p-3 sm:p-4;
+  @apply rounded-card border border-white/12 bg-surface-raised p-3 text-ink sm:p-4;
 }
 
 .w95-statusbar {
-  @apply flex flex-wrap items-center gap-3 border-t border-white/8 bg-surface px-3 py-2 text-xs text-ink-muted;
+  @apply flex flex-wrap items-center gap-3 border-t border-white/10 bg-surface px-3 py-2.5 text-xs text-ink-secondary;
 }
 
 .w95-input {
-  @apply min-h-11 w-full rounded-xl border border-white/10 bg-surface-raised px-3 text-sm font-medium text-ink placeholder:text-ink-muted;
+  @apply min-h-11 w-full rounded-xl border border-white/14 bg-surface px-3 text-base font-medium text-ink placeholder:text-ink-muted sm:text-sm;
 }
 .w95-input:focus {
-  @apply border-accent/50 outline-none ring-2 ring-accent/20;
+  @apply border-accent/50 outline-none ring-2 ring-accent/25;
 }
 
 .w95-input-num {
-  @apply min-h-11 w-16 rounded-xl border border-white/10 bg-surface-raised px-1 text-center text-lg font-semibold text-ink tabular-nums;
+  @apply min-h-11 w-20 rounded-xl border border-white/14 bg-surface px-1 text-center text-xl font-semibold text-ink tabular-nums sm:w-16 sm:text-lg;
 }
 .w95-input-num:focus {
-  @apply border-accent/50 outline-none ring-2 ring-accent/20;
+  @apply border-accent/50 outline-none ring-2 ring-accent/25;
 }
 
 .w95-segment {
-  @apply flex gap-1 rounded-xl border border-white/8 bg-surface p-1;
+  @apply flex gap-1 rounded-xl border border-white/12 bg-surface p-1;
 }
 
 .w95-segment button {
-  @apply min-h-11 flex-1 rounded-lg px-2 text-xs font-semibold text-ink-muted sm:text-sm;
+  @apply min-h-11 flex-1 rounded-lg px-2 text-xs font-semibold text-ink-secondary sm:text-sm;
 }
 .w95-segment button[data-active='true'] {
-  @apply bg-accent/20 text-accent ring-1 ring-accent/35;
+  @apply bg-accent/25 text-accent ring-1 ring-accent/40;
 }
 .w95-segment button[data-active='false'] {
-  @apply text-ink-muted hover:text-ink-secondary;
+  @apply text-ink-secondary hover:bg-white/6 hover:text-ink;
 }
 
 .bracket-connector {
@@ -173,19 +194,19 @@
 }
 
 .match-card {
-  @apply rounded-card border border-white/8 bg-surface-raised p-3 text-left sm:p-4;
+  @apply rounded-card border border-white/12 bg-surface-raised p-3 text-left text-ink sm:p-4;
 }
 
 .w95-list-header {
-  @apply border-b border-white/8 bg-surface px-2 py-2 text-[10px] font-semibold uppercase tracking-wide text-ink-muted;
+  @apply border-b border-white/10 bg-surface px-2 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-ink;
 }
 
 .w95-row-winner {
-  @apply bg-win/10 ring-1 ring-win/25;
+  @apply bg-win/15 ring-1 ring-win/35;
 }
 
 .w95-row-tbd {
-  @apply bg-white/3;
+  @apply bg-white/5;
 }
 
 .bracket-h-scroll {

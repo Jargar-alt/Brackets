@@ -194,7 +194,7 @@ export function LiveResultsView() {
       <header className="glass-panel border-b border-white/8 px-4 py-3">
         <div className="mx-auto flex max-w-5xl flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-ink-muted">Live results</p>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-ink-secondary">Live results</p>
             <h1 className="text-xl font-bold leading-tight">{name}</h1>
             <p className="text-xs text-ink-secondary">{FORMAT_LABEL[format]}</p>
           </div>
@@ -202,12 +202,12 @@ export function LiveResultsView() {
             <span
               className={cn(
                 'rounded-full border px-2 py-1',
-                isFinished ? 'border-win/30 bg-win/10 text-win' : 'border-white/10 bg-white/5 text-ink-secondary'
+                isFinished ? 'border-win/30 bg-win/10 text-win' : 'border-white/14 bg-surface text-ink-secondary'
               )}
             >
               {isFinished ? 'Finished' : isStarted ? 'In progress' : 'Not started'}
             </span>
-            <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-ink-secondary">
+            <span className="rounded-full border border-white/14 bg-surface px-2 py-1 text-ink-secondary">
               First to {rules.pointsToWin}
               {rules.bestOf === 3 ? ' · Bo3' : ''}
             </span>
@@ -273,7 +273,7 @@ export function LiveResultsView() {
           </p>
           {format === 'winners-list' && winnersQueuePairs.length > 0 && (
             <div className="mb-4 space-y-2">
-              <p className="text-[10px] font-bold uppercase text-ink-muted">From waiting list (order)</p>
+              <p className="text-[10px] font-bold uppercase text-ink-secondary">From waiting list (order)</p>
               <ol className="space-y-2">
                 {winnersQueuePairs.slice(0, 15).map((p, i) => (
                   <li
@@ -294,7 +294,7 @@ export function LiveResultsView() {
           )}
 
           {queuedMatches.length === 0 && !(format === 'winners-list' && winnersQueuePairs.length > 0) ? (
-            <p className="text-sm font-bold text-ink-muted">No matches waiting (or all courts are full).</p>
+            <p className="text-sm font-bold text-ink-secondary">No matches waiting (or all courts are full).</p>
           ) : (
             queuedMatches.length > 0 && (
             <ol className="space-y-2">

@@ -1035,7 +1035,7 @@ export default function App() {
                       </>
                     )}
                     {tournamentId && (
-                      <span className="w95-inset flex items-center gap-1 px-2 py-1 text-xs font-semibold text-zinc-800">
+                      <span className="w95-inset flex items-center gap-1 px-2 py-1 text-xs font-semibold text-ink">
                         <Share2 className="h-3.5 w-3.5" />
                         {inviteCode}
                       </span>
@@ -1050,6 +1050,7 @@ export default function App() {
                           >
                             <CheckCircle className="h-3.5 w-3.5" />
                             <span className="hidden sm:inline">Finish</span>
+                      <span className="sm:hidden">Done</span>
                           </button>
                         )}
                         <button
@@ -1086,7 +1087,7 @@ export default function App() {
                   </>
                 ) : (
                   <>
-                    <span className="hidden text-xs font-semibold text-zinc-600 sm:inline">
+                    <span className="text-xs font-semibold text-ink-secondary sm:hidden">
                       {isFirebaseConfigured ? 'Local' : 'Local only'}
                     </span>
                     {isFirebaseConfigured ? (
@@ -1099,7 +1100,7 @@ export default function App() {
                         Sign in
                       </button>
                     ) : (
-                      <span className="w95-inset max-w-[10rem] truncate px-2 py-1 text-[10px] font-medium text-zinc-600 sm:max-w-none sm:text-xs">
+                      <span className="w95-inset max-w-[10rem] truncate px-2 py-1 text-[10px] font-medium text-ink-secondary sm:max-w-none sm:text-xs">
                         Add Firebase in .env to enable sign-in
                       </span>
                     )}
@@ -1116,7 +1117,7 @@ export default function App() {
               </div>
             )}
         {!isStarted ? (
-          <div className="space-y-8">
+          <div className="space-y-6 sm:space-y-8">
             {/* Tab Switcher */}
             <div className="flex justify-center">
               <div className="w95-segment flex max-w-md w-full">
@@ -1147,7 +1148,7 @@ export default function App() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 lg:gap-8">
             {/* Left Column: Team Management & Rules */}
             <div className="lg:col-span-2 space-y-6">
               {/* Rules Section */}
@@ -1158,7 +1159,7 @@ export default function App() {
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                   <div className="space-y-4">
-                    <label className="block text-sm font-bold text-zinc-700">Set Format</label>
+                    <label className="block text-sm font-bold text-ink">Set Format</label>
                     <div className="flex flex-wrap gap-2">
                       {POINTS_OPTIONS.map((p) => (
                         <button
@@ -1168,8 +1169,8 @@ export default function App() {
                           className={cn(
                             'rounded-lg border px-4 py-2 text-sm font-semibold transition-all',
                             rules.pointsToWin === p
-                              ? 'border-slate-700 bg-slate-800 text-white'
-                              : 'border-zinc-200 bg-white text-zinc-700 hover:border-zinc-300'
+                              ? 'chip-active border-accent/50 bg-accent/20 text-accent'
+                              : 'chip border-white/14 bg-surface text-ink hover:border-white/24'
                           )}
                         >
                           First to {p}
@@ -1179,7 +1180,7 @@ export default function App() {
                   </div>
 
                   <div className="space-y-4">
-                    <label className="block text-sm font-bold text-zinc-700">Match Length</label>
+                    <label className="block text-sm font-bold text-ink">Match Length</label>
                     <div className="flex gap-2">
                       {[1, 3].map((b) => (
                         <button
@@ -1188,8 +1189,8 @@ export default function App() {
                           className={cn(
                             "px-4 py-2 rounded-lg text-sm font-bold border transition-all",
                             rules.bestOf === b 
-                              ? "border-slate-700 bg-slate-800 text-white" 
-                              : "bg-white text-zinc-600 border-zinc-200 hover:border-zinc-300"
+                              ? "chip-active border-accent/50 bg-accent/20 text-accent"
+                              : "chip border-white/14 bg-surface text-ink hover:border-white/24"
                           )}
                         >
                           {b === 1 ? 'One Set' : 'Best of 3'}
@@ -1197,18 +1198,18 @@ export default function App() {
                       ))}
                     </div>
                     {rules.bestOf === 3 && (
-                      <p className="text-xs text-zinc-500 italic">Third set played to 15 points.</p>
+                      <p className="text-xs text-ink-secondary italic">Third set played to 15 points.</p>
                     )}
                   </div>
 
-                  <div className="sm:col-span-2 pt-4 border-t border-zinc-100 flex flex-col sm:flex-row gap-6">
+                  <div className="sm:col-span-2 pt-4 border-t border-white/8 flex flex-col sm:flex-row gap-6">
                     <button
                       onClick={() => updateRules({ winByTwo: !rules.winByTwo })}
                       className="flex items-center gap-3 group"
                     >
                       <div className={cn(
                         "w-12 h-6 rounded-full transition-all relative",
-                        rules.winByTwo ? "bg-emerald-600 shadow-inner ring-1 ring-emerald-800/30" : "bg-zinc-300"
+                        rules.winByTwo ? "bg-win shadow-inner ring-1 ring-win/40" : "bg-surface-overlay"
                       )}>
                         <div className={cn(
                           "absolute top-1 w-4 h-4 bg-white rounded-full transition-all",
@@ -1216,23 +1217,23 @@ export default function App() {
                         )} />
                       </div>
                       <div className="text-left">
-                        <div className="text-sm font-bold text-zinc-700">Win by Two</div>
-                        <div className="text-xs text-zinc-500">Must win by at least 2 points.</div>
+                        <div className="text-sm font-bold text-ink">Win by Two</div>
+                        <div className="text-xs text-ink-secondary">Must win by at least 2 points.</div>
                       </div>
                     </button>
 
-                    <div className="sm:col-span-2 flex flex-col gap-2 border-t border-zinc-100 pt-4 sm:flex-row sm:flex-wrap sm:items-center">
-                      <span className="text-xs font-semibold text-zinc-700">Serve to win</span>
-                      <span className="hidden text-xs text-zinc-500 sm:inline">— honor on court; you still enter final scores.</span>
-                      <div className="flex gap-0.5 rounded-md border border-zinc-200 bg-zinc-50/80 p-0.5">
+                    <div className="sm:col-span-2 flex flex-col gap-2 border-t border-white/8 pt-4 sm:flex-row sm:flex-wrap sm:items-center">
+                      <span className="text-xs font-semibold text-ink">Serve to win</span>
+                      <span className="hidden text-xs text-ink-secondary sm:inline">— honor on court; you still enter final scores.</span>
+                      <div className="flex gap-0.5 rounded-md border border-white/12 bg-surface p-0.5">
                         <button
                           type="button"
                           onClick={() => updateRules({ serveToWin: true })}
                           className={cn(
-                            'rounded px-2.5 py-1 text-[11px] font-bold transition-colors',
+                            'min-h-9 rounded px-3 py-1.5 text-[11px] font-bold transition-colors',
                             rules.serveToWin
-                              ? 'bg-slate-800 text-white'
-                              : 'text-zinc-600 hover:bg-white'
+                              ? 'bg-accent/25 text-accent'
+                              : 'text-ink-secondary hover:bg-white/8 hover:text-ink'
                           )}
                         >
                           On
@@ -1241,10 +1242,10 @@ export default function App() {
                           type="button"
                           onClick={() => updateRules({ serveToWin: false })}
                           className={cn(
-                            'rounded px-2.5 py-1 text-[11px] font-bold transition-colors',
+                            'min-h-9 rounded px-3 py-1.5 text-[11px] font-bold transition-colors',
                             !rules.serveToWin
-                              ? 'bg-slate-800 text-white'
-                              : 'text-zinc-600 hover:bg-white'
+                              ? 'bg-accent/25 text-accent'
+                              : 'text-ink-secondary hover:bg-white/8 hover:text-ink'
                           )}
                         >
                           Off
@@ -1260,7 +1261,7 @@ export default function App() {
                         >
                           <div className={cn(
                             "w-12 h-6 rounded-full transition-all relative",
-                            rules.winnerStays ? "bg-emerald-600 shadow-inner ring-1 ring-emerald-800/30" : "bg-zinc-300"
+                            rules.winnerStays ? "bg-win shadow-inner ring-1 ring-win/40" : "bg-surface-overlay"
                           )}>
                             <div className={cn(
                               "absolute top-1 w-4 h-4 bg-white rounded-full transition-all",
@@ -1268,14 +1269,14 @@ export default function App() {
                             )} />
                           </div>
                           <div className="text-left">
-                            <div className="text-sm font-bold text-zinc-700">Winner Stays</div>
-                            <div className="text-xs text-zinc-500">Winners stay on the net for next game.</div>
+                            <div className="text-sm font-bold text-ink">Winner Stays</div>
+                            <div className="text-xs text-ink-secondary">Winners stay on the net for next game.</div>
                           </div>
                         </button>
 
                         {rules.winnerStays && (
-                          <div className="space-y-4 pt-4 border-t border-zinc-100">
-                            <label className="block text-sm font-bold text-zinc-700">Max Consecutive Wins</label>
+                          <div className="space-y-4 pt-4 border-t border-white/8">
+                            <label className="block text-sm font-bold text-ink">Max Consecutive Wins</label>
                             <div className="flex gap-2">
                               {[2, 3, 4, 5].map((w) => (
                                 <button
@@ -1284,8 +1285,8 @@ export default function App() {
                                   className={cn(
                                     "px-3 py-1.5 rounded-lg text-xs font-bold border transition-all",
                                     rules.maxConsecutiveWins === w 
-                                      ? "border-slate-700 bg-slate-800 text-white" 
-                                      : "bg-white text-zinc-600 border-zinc-200 hover:border-zinc-300"
+                                      ? "chip-active border-accent/50 bg-accent/20 text-accent" 
+                                      : "chip border-white/14 bg-surface text-ink hover:border-white/24"
                                   )}
                                 >
                                   {w} Wins
@@ -1294,15 +1295,15 @@ export default function App() {
                             </div>
                             
                             <div className="space-y-2">
-                              <label className="block text-[10px] font-bold text-zinc-400 uppercase">After Max Wins:</label>
+                              <label className="block text-[10px] font-bold text-ink-muted uppercase">After Max Wins:</label>
                               <div className="flex gap-2">
                                 <button
                                   onClick={() => updateRules({ onMaxWins: 'other-stays' })}
                                   className={cn(
                                     "flex-1 px-3 py-2 rounded-lg text-[10px] font-bold border transition-all",
                                     rules.onMaxWins === 'other-stays' 
-                                      ? "border-slate-700 bg-slate-800 text-white" 
-                                      : "bg-white text-zinc-600 border-zinc-200 hover:border-zinc-300"
+                                      ? "chip-active border-accent/50 bg-accent/20 text-accent" 
+                                      : "chip border-white/14 bg-surface text-ink hover:border-white/24"
                                   )}
                                 >
                                   Other Team Stays
@@ -1312,8 +1313,8 @@ export default function App() {
                                   className={cn(
                                     "flex-1 px-3 py-2 rounded-lg text-[10px] font-bold border transition-all",
                                     rules.onMaxWins === 'both-off' 
-                                      ? "border-slate-700 bg-slate-800 text-white" 
-                                      : "bg-white text-zinc-600 border-zinc-200 hover:border-zinc-300"
+                                      ? "chip-active border-accent/50 bg-accent/20 text-accent" 
+                                      : "chip border-white/14 bg-surface text-ink hover:border-white/24"
                                   )}
                                 >
                                   Both Teams Off
@@ -1324,8 +1325,8 @@ export default function App() {
                         )}
                       </>
                     )}
-                    <div className="sm:col-span-2 pt-4 border-t border-zinc-100 space-y-4">
-                      <label className="block text-sm font-bold text-zinc-700">Number of Nets</label>
+                    <div className="sm:col-span-2 pt-4 border-t border-white/8 space-y-4">
+                      <label className="block text-sm font-bold text-ink">Number of Nets</label>
                       <div className="flex items-center gap-6">
                         <input
                           type="range"
@@ -1338,18 +1339,18 @@ export default function App() {
                             if (tournamentId && db)
                               void updateDoc(doc(db, 'tournaments', tournamentId), { numNets: val });
                           }}
-                          className="flex-1 accent-slate-700 h-2 bg-zinc-100 rounded-lg appearance-none cursor-pointer"
+                          className="flex-1 accent-accent h-2 bg-surface-overlay rounded-lg appearance-none cursor-pointer"
                         />
-                        <div className="w-12 h-12 rounded-xl border border-slate-600/40 bg-slate-100 flex items-center justify-center text-lg font-bold text-slate-800">
+                        <div className="w-12 h-12 rounded-xl border border-white/14 bg-surface-overlay flex items-center justify-center text-lg font-bold text-ink">
                           {numNets}
                         </div>
                       </div>
                     </div>
 
                     {format === 'pool' && activeTab === 'tournaments' && (
-                      <div className="sm:col-span-2 space-y-3 rounded-xl border-2 border-emerald-200 bg-emerald-50/50 p-4">
-                        <label className="block text-sm font-bold text-emerald-950">Groups (World Cup style)</label>
-                        <p className="text-xs leading-relaxed text-emerald-900/90">
+                      <div className="panel-tint-win sm:col-span-2 space-y-3">
+                        <label className="block text-sm font-bold text-win">Groups (World Cup style)</label>
+                        <p className="text-xs leading-relaxed text-ink-secondary">
                           1 = one full pool. 2+ splits teams A, B, C… in list order; each group has its own round
                           robin. Nets fill group A before B, and so on.
                         </p>
@@ -1362,9 +1363,9 @@ export default function App() {
                             onChange={e =>
                               updateRules({ poolGroups: parseInt(e.target.value, 10) })
                             }
-                            className="h-2 flex-1 cursor-pointer appearance-none rounded-lg bg-zinc-100 accent-emerald-700"
+                            className="h-2 flex-1 cursor-pointer appearance-none rounded-lg bg-surface-overlay accent-win"
                           />
-                          <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-emerald-600/40 bg-white text-lg font-bold text-emerald-950">
+                          <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-win/35 bg-surface-overlay text-lg font-bold text-ink">
                             {rules.poolGroups ?? 1}
                           </div>
                         </div>
@@ -1372,11 +1373,11 @@ export default function App() {
                     )}
 
                     {format === 'casual' && activeTab === 'tournaments' && (
-                      <div className="sm:col-span-2 space-y-3 rounded-xl border-2 border-sky-200 bg-sky-50/60 p-4">
-                        <label className="block text-sm font-bold text-sky-950">
+                      <div className="panel-tint-accent sm:col-span-2 space-y-3">
+                        <label className="block text-sm font-bold text-accent">
                           Rounds (games per team)
                         </label>
-                        <p className="text-xs leading-relaxed text-sky-900/90">
+                        <p className="text-xs leading-relaxed text-ink-secondary">
                           Everyone plays wave 1 first; the next wave unlocks after that round is fully done. Later
                           waves pair stronger records together when possible — low pressure, just for fun flow.
                         </p>
@@ -1389,9 +1390,9 @@ export default function App() {
                             onChange={e =>
                               updateRules({ gamesPerTeam: parseInt(e.target.value, 10) })
                             }
-                            className="h-2 flex-1 cursor-pointer appearance-none rounded-lg bg-zinc-100 accent-sky-700"
+                            className="h-2 flex-1 cursor-pointer appearance-none rounded-lg bg-surface-overlay accent-accent"
                           />
-                          <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-sky-600/40 bg-white text-lg font-bold text-sky-950">
+                          <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-accent/35 bg-surface-overlay text-lg font-bold text-ink">
                             {rules.gamesPerTeam ?? 2}
                           </div>
                         </div>
@@ -1400,9 +1401,9 @@ export default function App() {
                   </div>
 
                   {format === 'winners-list' && (
-                    <div className="sm:col-span-2 pt-4 border-t border-zinc-100 space-y-6">
+                    <div className="sm:col-span-2 pt-4 border-t border-white/8 space-y-6">
                       <div className="space-y-4">
-                        <label className="block text-sm font-bold text-zinc-700">Pre-sign up Teams</label>
+                        <label className="block text-sm font-bold text-ink">Pre-sign up Teams</label>
                         <div className="flex items-center gap-6">
                           <input
                             type="range"
@@ -1413,25 +1414,25 @@ export default function App() {
                               const val = parseInt(e.target.value);
                               setPreSignupCount(val);
                             }}
-                            className="flex-1 accent-slate-700 h-2 bg-zinc-100 rounded-lg appearance-none cursor-pointer"
+                            className="flex-1 accent-accent h-2 bg-surface-overlay rounded-lg appearance-none cursor-pointer"
                           />
-                          <div className="w-12 h-12 rounded-xl border border-slate-600/40 bg-slate-100 flex items-center justify-center text-lg font-bold text-slate-800">
+                          <div className="w-12 h-12 rounded-xl border border-white/14 bg-surface-overlay flex items-center justify-center text-lg font-bold text-ink">
                             {preSignupCount}
                           </div>
                         </div>
-                        <p className="text-[10px] text-zinc-500 italic">Automatically generates placeholder teams to start the queue.</p>
+                        <p className="text-[10px] text-ink-secondary italic">Automatically generates placeholder teams to start the queue.</p>
                       </div>
                     </div>
                   )}
                 </div>
               </div>
 
-              <div className="rounded-xl border border-zinc-200 bg-white p-6 shadow-sm">
+              <div className="w95-panel">
                 <div className="mb-6 flex flex-col gap-6 xl:flex-row xl:items-start">
                   <div className="min-w-0 flex-1">
                     <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <h2 className="flex items-center gap-2 text-lg font-semibold">
-                        <Users className="h-5 w-5 text-slate-700" />
+                        <Users className="h-5 w-5 text-accent" />
                         Teams ({teams.length})
                       </h2>
                       <div className="flex flex-wrap gap-2">
@@ -1445,7 +1446,7 @@ export default function App() {
                               }));
                               setTeams([...teams, ...newTeams]);
                             }}
-                            className="flex items-center gap-2 rounded-lg bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-950 transition-colors hover:bg-emerald-100"
+                            className="flex min-h-11 items-center gap-2 rounded-lg border border-win/30 bg-win/10 px-4 py-2 text-sm font-medium text-win transition-colors hover:bg-win/15"
                           >
                             <Plus className="h-4 w-4" />
                             Quick Add {preSignupCount}
@@ -1470,14 +1471,14 @@ export default function App() {
                         initial={{ opacity: 0, scale: 0.9 }}
                         animate={{ opacity: 1, scale: 1 }}
                         exit={{ opacity: 0, scale: 0.9 }}
-                        className="flex items-center gap-3 p-4 bg-zinc-50 rounded-xl border border-zinc-200 group active:bg-zinc-100 transition-colors"
+                        className="flex items-center gap-3 rounded-xl border border-white/12 bg-surface p-4 group active:bg-surface-overlay transition-colors"
                       >
                         <div className="flex flex-col items-center justify-center gap-0.5">
-                          <div className="flex h-8 w-8 items-center justify-center rounded-full border border-zinc-200 bg-white text-xs font-bold text-zinc-500 shadow-sm">
+                          <div className="flex h-9 w-9 items-center justify-center rounded-full border border-white/14 bg-surface-overlay text-xs font-bold text-ink">
                             {index + 1}
                           </div>
                           {format === 'pool' && team.group && (
-                            <span className="text-[9px] font-extrabold text-emerald-800">Grp {team.group}</span>
+                            <span className="text-[9px] font-extrabold text-win">Grp {team.group}</span>
                           )}
                         </div>
                         <input
@@ -1485,11 +1486,11 @@ export default function App() {
                           value={team.name}
                           onChange={(e) => updateTeamName(team.id, e.target.value)}
                           placeholder={`Team ${index + 1}`}
-                          className="flex-1 bg-transparent border-none focus:ring-0 text-base font-semibold p-0 placeholder:text-zinc-400"
+                          className="flex-1 bg-transparent border-none focus:ring-0 text-base font-semibold text-ink p-0 placeholder:text-ink-muted"
                         />
                         <button
                           onClick={() => removeTeam(team.id)}
-                          className="p-2 text-zinc-400 hover:text-red-500 sm:opacity-0 sm:group-hover:opacity-100 transition-all"
+                          className="min-h-11 min-w-11 p-2 text-ink-muted hover:text-live sm:opacity-0 sm:group-hover:opacity-100 transition-all"
                           aria-label="Remove team"
                         >
                           <Trash2 className="w-5 h-5" />
@@ -1508,9 +1509,9 @@ export default function App() {
               </div>
 
               {activeTab === 'tournaments' && (
-                <div className="bg-white p-6 rounded-xl border border-zinc-200 shadow-sm">
-                  <h2 className="text-lg font-semibold mb-6 flex items-center gap-2">
-                    <LayoutGrid className="w-5 h-5 text-slate-700" />
+                <div className="w95-panel">
+                  <h2 className="text-lg font-semibold mb-6 flex items-center gap-2 text-ink">
+                    <LayoutGrid className="w-5 h-5 text-accent" />
                     Tournament Style
                   </h2>
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -1536,13 +1537,13 @@ export default function App() {
                         className={cn(
                           "p-4 rounded-xl border-2 text-left transition-all",
                           format === style.id 
-                            ? "border-slate-600 bg-emerald-50 ring-4 ring-emerald-200/60" 
-                            : "border-zinc-100 hover:border-zinc-200 bg-white"
+                            ? "border-accent/50 bg-accent/15 ring-2 ring-accent/30" 
+                            : "border-white/12 bg-surface hover:border-white/20"
                         )}
                       >
-                        <style.icon className={cn("w-6 h-6 mb-2", format === style.id ? "text-slate-700" : "text-zinc-400")} />
-                        <div className="font-bold text-sm">{style.name}</div>
-                        <div className="text-xs text-zinc-500 mt-1">{style.desc}</div>
+                        <style.icon className={cn("w-6 h-6 mb-2", format === style.id ? "text-accent" : "text-ink-muted")} />
+                        <div className="font-bold text-sm text-ink">{style.name}</div>
+                        <div className="text-xs text-ink-secondary mt-1">{style.desc}</div>
                       </button>
                     ))}
                   </div>
@@ -1553,35 +1554,35 @@ export default function App() {
             {/* Right Column: Calculator & Start */}
             <div className="space-y-6">
               {!tournamentId && (
-                <div className="rounded-xl border border-zinc-200 bg-white p-6 shadow-sm">
-                  <h3 className="mb-2 flex items-center gap-2 font-bold text-zinc-900">
-                    <Share2 className="h-5 w-5 text-slate-700" />
+                <div className="w95-panel">
+                  <h3 className="mb-2 flex items-center gap-2 font-bold text-ink">
+                    <Share2 className="h-5 w-5 text-accent" />
                     Cloud sync (optional)
                   </h3>
                   {!isFirebaseConfigured ? (
                     <>
-                      <p className="mb-4 text-sm text-zinc-600">
+                      <p className="mb-4 text-sm text-ink-secondary">
                         Firebase is not configured in this build. Copy{' '}
-                        <code className="rounded bg-zinc-100 px-1 py-0.5 text-xs">.env.example</code> to{' '}
-                        <code className="rounded bg-zinc-100 px-1 py-0.5 text-xs">.env</code>, add your web
+                        <code className="rounded bg-surface px-1 py-0.5 text-xs text-ink">.env.example</code> to{' '}
+                        <code className="rounded bg-surface px-1 py-0.5 text-xs text-ink">.env</code>, add your web
                         app keys from the Firebase console, enable Google sign-in and Firestore, then restart{' '}
-                        <code className="rounded bg-zinc-100 px-1 py-0.5 text-xs">npm run dev</code>.
+                        <code className="rounded bg-surface px-1 py-0.5 text-xs text-ink">npm run dev</code>.
                       </p>
-                      <p className="text-xs text-zinc-500">
+                      <p className="text-xs text-ink-secondary">
                         Until then, everything runs locally in this browser; data is still saved here when you are
                         not in a cloud tournament.
                       </p>
                     </>
                   ) : (
                     <>
-                      <p className="mb-6 text-sm text-zinc-500">
+                      <p className="mb-6 text-sm text-ink-secondary">
                         Go live to share invite codes and sync scores across devices.
                       </p>
                       {!user ? (
                         <button
                           type="button"
                           onClick={() => void login()}
-                          className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-50 py-3 font-bold text-emerald-950 transition-colors hover:bg-emerald-100"
+                          className="flex w-full min-h-11 items-center justify-center gap-2 rounded-lg border border-win/30 bg-win/10 py-3 font-bold text-win transition-colors hover:bg-win/15"
                         >
                           <LogIn className="h-4 w-4" />
                           Sign in to go live
@@ -1601,16 +1602,16 @@ export default function App() {
               )}
 
               {tournamentId && isFirebaseConfigured && isCreator && (
-                <div className="rounded-xl border border-sky-200 bg-sky-50/80 p-5 shadow-sm">
-                  <h3 className="mb-2 flex items-center gap-2 text-sm font-bold text-sky-950">
+                <div className="panel-tint-accent p-5">
+                  <h3 className="mb-2 flex items-center gap-2 text-sm font-bold text-accent">
                     <ExternalLink className="h-4 w-4" />
                     Public live results
                   </h3>
-                  <p className="mb-3 text-xs leading-relaxed text-sky-900/90">
+                  <p className="mb-3 text-xs leading-relaxed text-ink-secondary">
                     Share this link with players and fans. No Google sign-in — read-only courts, queue, bracket,
                     and scores.
                   </p>
-                  <div className="mb-2 break-all rounded border border-sky-300/60 bg-white px-2 py-1.5 font-mono text-[11px] text-sky-950">
+                  <div className="mb-2 break-all rounded border border-white/14 bg-surface px-2 py-1.5 font-mono text-[11px] text-ink">
                     {typeof window !== 'undefined'
                       ? `${window.location.origin}/live/${tournamentId}`
                       : `/live/${tournamentId}`}
@@ -1620,7 +1621,7 @@ export default function App() {
                       href={`/live/${tournamentId}`}
                       target="_blank"
                       rel="noreferrer"
-                      className="inline-flex items-center gap-1 rounded-lg bg-sky-800 px-3 py-2 text-xs font-bold text-white hover:bg-sky-900"
+                      className="inline-flex min-h-11 items-center gap-1 rounded-lg bg-accent px-3 py-2 text-xs font-bold text-ink hover:opacity-90"
                     >
                       <ExternalLink className="h-3.5 w-3.5" />
                       Open live
@@ -1634,14 +1635,14 @@ export default function App() {
                             : '';
                         void navigator.clipboard.writeText(u).then(() => {});
                       }}
-                      className="inline-flex items-center gap-1 rounded-lg border border-sky-600 bg-white px-3 py-2 text-xs font-bold text-sky-950 hover:bg-sky-100"
+                      className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-white/14 bg-surface px-3 py-2 text-xs font-bold text-ink hover:bg-surface-overlay"
                     >
                       <Copy className="h-3.5 w-3.5" />
                       Copy link
                     </button>
                   </div>
                   {inviteCode && (
-                    <p className="mt-3 text-[10px] font-semibold text-sky-900/80">
+                    <p className="mt-3 text-[10px] font-semibold text-ink-secondary">
                       Short URL on your host:{' '}
                       <span className="font-mono">
                         {typeof window !== 'undefined' ? window.location.origin : ''}/live?code={inviteCode}
@@ -1664,7 +1665,7 @@ export default function App() {
                     type="button"
                     onClick={() => void restartTournament()}
                     disabled={!!tournamentId && !isCreator}
-                    className="w-full bg-white py-3 rounded-xl font-bold text-sm border border-zinc-200 text-zinc-700 hover:bg-zinc-50 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="w-full min-h-11 border border-white/14 bg-surface py-3 rounded-xl font-bold text-sm text-ink hover:bg-surface-overlay transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <RefreshCw className="w-4 h-4" />
                     Restart bracket
@@ -1673,7 +1674,7 @@ export default function App() {
                     type="button"
                     onClick={() => void resetToSetup()}
                     disabled={!!tournamentId && !isCreator}
-                    className="w-full bg-white py-3 rounded-xl font-bold text-sm border border-zinc-200 text-zinc-700 hover:bg-zinc-50 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="w-full min-h-11 border border-white/14 bg-surface py-3 rounded-xl font-bold text-sm text-ink hover:bg-surface-overlay transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <Plus className="w-4 h-4" />
                     New tournament
@@ -1683,7 +1684,7 @@ export default function App() {
                 <button
                   onClick={startTournament}
                   disabled={(activeTab === 'tournaments' && teams.length < 2) || (activeTab === 'winners-list' && preSignupCount < 2) || (tournamentId && !isCreator)}
-                  className="flex w-full cursor-pointer items-center justify-center gap-3 rounded-xl bg-slate-800 py-4 text-lg font-bold text-white shadow-lg shadow-slate-900/25 transition-all hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="flex w-full min-h-[3.25rem] cursor-pointer items-center justify-center gap-3 rounded-xl bg-accent py-4 text-base font-bold text-ink shadow-lg transition-all hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 sm:text-lg"
                 >
                   <Play className="w-6 h-6 fill-current" />
                   {tournamentId && !isCreator ? 'Waiting for Creator...' : activeTab === 'tournaments' ? 'Start Tournament' : 'Start Open Play'}
@@ -1691,7 +1692,7 @@ export default function App() {
               )}
               
               {!tournamentId && !user && (
-                <p className="text-center text-xs text-zinc-400">
+                <p className="text-center text-xs text-ink-muted">
                   Running in Local Mode. Data is saved only on this device.
                 </p>
               )}
@@ -1701,27 +1702,27 @@ export default function App() {
       ) : (
           <div id="tournament-view">
             {isFinished && (
-              <div className="mb-6 rounded-xl border-2 border-emerald-400/80 bg-emerald-50 px-4 py-6 text-center shadow-sm sm:py-8">
+              <div className="mb-6 rounded-xl border border-win/35 bg-win/10 px-4 py-6 text-center sm:py-8">
                 {format === 'casual' ? (
                   <>
-                    <p className="text-xs font-semibold uppercase tracking-widest text-emerald-900/80">
+                    <p className="text-xs font-semibold uppercase tracking-widest text-win">
                       Session complete
                     </p>
-                    <p className="mt-3 text-lg font-semibold text-emerald-950">
+                    <p className="mt-3 text-lg font-semibold text-ink">
                       All scheduled games are done. This format does not name a tournament winner.
                     </p>
                   </>
                 ) : (
                   <>
-                    <p className="text-xs font-semibold uppercase tracking-widest text-emerald-900/80">
+                    <p className="text-xs font-semibold uppercase tracking-widest text-win">
                       Tournament winner
                     </p>
                     {displayChampion ? (
                       <>
-                        <p className="mt-2 text-3xl font-bold leading-tight text-emerald-950 sm:text-4xl">
+                        <p className="mt-2 text-3xl font-bold leading-tight text-ink sm:text-4xl">
                           {displayChampion.name}
                         </p>
-                        <p className="mt-2 text-sm font-medium text-emerald-900/90">
+                        <p className="mt-2 text-sm font-medium text-ink-secondary">
                           First to {rules.pointsToWin}
                           {rules.bestOf === 3 ? ' · Best of 3' : ' · One set'}
                           {rules.winByTwo ? ' · Win by 2' : ''}
@@ -1729,7 +1730,7 @@ export default function App() {
                         </p>
                       </>
                     ) : (
-                      <p className="mt-3 text-lg font-semibold text-emerald-950">
+                      <p className="mt-3 text-lg font-semibold text-ink">
                         Tournament complete — winner not determined from scores.
                       </p>
                     )}
@@ -1753,19 +1754,19 @@ export default function App() {
                     </span>
                   </div>
                   {rules.serveToWin && (
-                    <div className="flex max-w-full items-center gap-1.5 rounded border border-amber-300/80 bg-amber-50/90 px-2 py-1 text-[11px] font-medium text-amber-950">
-                      <Info className="h-3.5 w-3.5 shrink-0 text-amber-800 opacity-80" />
+                    <div className="panel-tint-tie flex max-w-full items-center gap-1.5 px-2 py-1.5 text-[11px] font-medium text-ink">
+                      <Info className="h-3.5 w-3.5 shrink-0 text-tie" />
                       <span className="leading-snug">Serve to win on</span>
                     </div>
                   )}
                   {tournamentId && (
-                    <div className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800 px-2 py-1.5 text-xs font-semibold uppercase text-white">
+                    <div className="flex items-center gap-2 rounded-lg border border-white/14 bg-surface-overlay px-2 py-1.5 text-xs font-semibold uppercase text-ink">
                       <Share2 className="h-4 w-4" />
                       {inviteCode}
                     </div>
                   )}
                   {isFinished && (
-                    <div className="flex items-center gap-2 rounded-lg border border-emerald-300 bg-emerald-100 px-2 py-1.5 text-xs font-semibold text-emerald-950">
+                    <div className="flex items-center gap-2 rounded-lg border border-win/30 bg-win/10 px-2 py-1.5 text-xs font-semibold text-win">
                       <Trophy className="h-4 w-4" />
                       Complete
                     </div>

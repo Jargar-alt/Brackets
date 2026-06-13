@@ -39,7 +39,7 @@ export function LiveMatchCard({ match, teams }: Props) {
 
   return (
     <article
-      className={`relative min-w-[17rem] shrink-0 rounded-card border border-white/8 bg-surface-raised p-4 shadow-feed ${
+      className={`relative w-[min(88vw,17rem)] shrink-0 snap-start rounded-card border border-white/12 bg-surface-raised p-4 shadow-feed sm:min-w-[17rem] sm:w-auto ${
         status === 'live' ? 'ring-1 ring-live/30' : status === 'final' ? 'ring-1 ring-win/25' : ''
       }`}
     >
@@ -47,7 +47,7 @@ export function LiveMatchCard({ match, teams }: Props) {
         <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-live/80 to-transparent" />
       )}
       <div className="mb-3 flex items-center justify-between gap-2">
-        <p className="text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-ink-muted">
+        <p className="text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-ink-secondary">
           {onNet ? `Net ${(match.netIndex ?? 0) + 1}` : `Round ${match.round}`}
           {match.bracketType ? ` · ${match.bracketType}` : ''}
         </p>
@@ -57,14 +57,14 @@ export function LiveMatchCard({ match, teams }: Props) {
       </div>
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-2">
-          <span className={`truncate text-sm ${match.winnerId === match.team1Id ? 'font-semibold text-win' : 'text-ink-secondary'}`}>
+          <span className={`truncate text-sm ${match.winnerId === match.team1Id ? 'font-semibold text-win' : 'text-ink'}`}>
             {t1}
           </span>
           {match.winnerId === match.team1Id && <span className="text-xs text-win">W</span>}
         </div>
         <div className="border-t border-white/6" />
         <div className="flex items-center justify-between gap-2">
-          <span className={`truncate text-sm ${match.winnerId === match.team2Id ? 'font-semibold text-win' : 'text-ink-secondary'}`}>
+          <span className={`truncate text-sm ${match.winnerId === match.team2Id ? 'font-semibold text-win' : 'text-ink'}`}>
             {t2}
           </span>
           {match.winnerId === match.team2Id && <span className="text-xs text-win">W</span>}

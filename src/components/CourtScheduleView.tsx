@@ -95,7 +95,7 @@ export const CourtScheduleView: React.FC<CourtScheduleViewProps> = ({
           </div>
           <p className="text-xs font-bold text-ink-secondary">{queueHelpText}</p>
           {casualHint != null && (
-            <p className="text-[10px] font-semibold text-ink-muted">
+            <p className="text-[10px] font-semibold text-ink-secondary">
               {casualHint} wave{casualHint === 1 ? '' : 's'} planned — complete each wave before the next queue opens.
               Not a formal standings format.
             </p>

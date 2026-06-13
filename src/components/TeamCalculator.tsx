@@ -69,7 +69,7 @@ export const TeamCalculator: React.FC<{ embedded?: boolean }> = ({ embedded }) =
 
       <div className={embedded ? 'space-y-3' : 'space-y-4'}>
         <div>
-          <label className="block text-xs font-bold text-black mb-1 uppercase tracking-wide">
+          <label className="block text-xs font-bold text-ink mb-1 uppercase tracking-wide">
             Total players
           </label>
           <input
@@ -91,13 +91,13 @@ export const TeamCalculator: React.FC<{ embedded?: boolean }> = ({ embedded }) =
         </div>
 
         {calculation ? (
-          <div className="p-3 w95-inset border border-black">
-            <div className="text-xs text-black font-bold mb-2">
+          <div className="p-3 w95-inset border border-white/12">
+            <div className="text-xs text-ink font-bold mb-2">
               Recommended: {calculation.teamCount} Teams
             </div>
             <div className="space-y-1">
               {calculation.distribution.map((d, i) => (
-                <div key={i} className="text-sm text-black flex justify-between font-bold">
+                <div key={i} className="text-sm text-ink flex justify-between font-bold">
                   <span>{d.count} teams of</span>
                   <span className="font-bold">{d.size} players</span>
                 </div>
@@ -106,9 +106,9 @@ export const TeamCalculator: React.FC<{ embedded?: boolean }> = ({ embedded }) =
           </div>
         ) : (
           playersInput !== '' && playerCount > 0 && (
-            <div className="p-3 w95-inset border-2 border-red-700 flex gap-2 items-start">
-              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-              <p className="text-xs font-bold text-black">
+            <div className="p-3 w95-inset border border-live/30 flex gap-2 items-start">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-live" />
+              <p className="text-xs font-bold text-ink">
                 Not enough players to form standard 5-7 person teams.
               </p>
             </div>

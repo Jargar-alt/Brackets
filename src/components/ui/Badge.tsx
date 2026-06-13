@@ -7,7 +7,7 @@ const toneStyles: Record<BadgeTone, string> = {
   final: 'bg-win/15 text-win',
   upcoming: 'bg-accent/15 text-accent',
   win: 'bg-win/15 text-win',
-  muted: 'bg-white/8 text-ink-secondary'
+  muted: 'bg-surface-overlay text-ink'
 };
 
 interface Props {

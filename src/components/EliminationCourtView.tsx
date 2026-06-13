@@ -139,7 +139,7 @@ export const EliminationCourtView: React.FC<EliminationCourtViewProps> = ({
           <Info className="h-4 w-4 shrink-0" />
           {title}
         </div>
-        <p className="mt-2 px-1 text-xs font-medium text-zinc-600">
+        <p className="mt-2 px-1 text-xs font-medium text-ink-secondary">
           For placement only — enter and edit scores on the nets below. Winners update here as you save.
         </p>
         <BracketReferenceStrip matches={winnersMatches} teams={teams} label="Winners" />
