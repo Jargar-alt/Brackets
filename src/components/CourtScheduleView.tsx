@@ -5,7 +5,7 @@ import { Layout, Clock, Users } from 'lucide-react';
 import { MatchCard } from './MatchCard';
 import { RecentResults } from './RecentResults';
 import { matchIsOnNet, matchIsWaitingForCourt, isAutoAdvancePlaceholder } from '../lib/matchSchedule';
-import { matchCountsTowardEliminationRecord } from '../lib/tournament/records';
+import { matchCountsTowardEliminationRecord, teamPowerStat } from '../lib/tournament/records';
 
 export interface CourtScheduleViewProps {
   matches: Match[];
@@ -55,20 +55,13 @@ export const CourtScheduleView = memo(function CourtScheduleView({
       const recordMs = teamMatches.filter(m => matchCountsTowardEliminationRecord(m));
       const wins = recordMs.filter(m => m.winnerId === team.id).length;
       const losses = recordMs.filter(m => m.winnerId && m.winnerId !== team.id).length;
-      const pointsFor = recordMs.reduce(
-        (acc, m) => acc + (m.team1Id === team.id ? (m.score1 || 0) : (m.score2 || 0)),
-        0
-      );
-      const pointsAgainst = recordMs.reduce(
-        (acc, m) => acc + (m.team1Id === team.id ? (m.score2 || 0) : (m.score1 || 0)),
-        0
-      );
-      return { ...team, wins, losses, diff: pointsFor - pointsAgainst, gp: recordMs.length };
+      const power = teamPowerStat(team.id, recordMs);
+      return { ...team, wins, losses, power, gp: recordMs.length };
     });
     const sorted =
       scheduleKind === 'casual'
         ? [...st].sort((a, b) => a.name.localeCompare(b.name))
-        : [...st].sort((a, b) => b.wins - a.wins || b.diff - a.diff);
+        : [...st].sort((a, b) => b.wins - a.wins || b.power - a.power);
 
     return {
       queuedMatches: queued,
@@ -197,7 +190,7 @@ export const CourtScheduleView = memo(function CourtScheduleView({
               )}
               <th className="w95-inset px-3 py-2 text-center text-[10px] font-bold uppercase">W</th>
               <th className="w95-inset px-3 py-2 text-center text-[10px] font-bold uppercase">L</th>
-              <th className="w95-inset px-3 py-2 text-center text-[10px] font-bold uppercase">Diff</th>
+              <th className="w95-inset px-3 py-2 text-center text-[10px] font-bold uppercase">Power</th>
             </tr>
           </thead>
           <tbody>
@@ -228,7 +221,7 @@ export const CourtScheduleView = memo(function CourtScheduleView({
                 <td className="bg-surface-raised px-3 py-2 text-center text-sm">{team.wins}</td>
                 <td className="bg-surface-raised px-3 py-2 text-center text-sm">{team.losses}</td>
                 <td className="bg-surface-raised px-3 py-2 text-center font-mono text-sm font-bold">
-                  {team.diff > 0 ? `+${team.diff}` : team.diff}
+                  {team.power > 0 ? `+${team.power}` : team.power}
                 </td>
               </tr>
             ))}

@@ -23,7 +23,7 @@ import {
 } from './advance';
 import { matchOutcomeFromSets, isValidCompletedSet } from './scoring';
 import { resolveChampionTeamId, isTournamentDecided } from './champion';
-import { countBracketLosses } from './records';
+import { countBracketLosses, teamPowerStat, matchPowerMarginForTeam } from './records';
 import type { Match, Team, TournamentRules } from '../../types';
 
 const teams4 = (n: number): Team[] =>
@@ -798,6 +798,39 @@ describe('countBracketLosses', () => {
     ];
     expect(countBracketLosses('lb', m)).toBe(1);
     expect(resolveChampionTeamId(m)).toBe('lb');
+  });
+});
+
+describe('teamPowerStat', () => {
+  it('sums rally-point margins from completed sets', () => {
+    const m: Match = {
+      id: 'm1',
+      team1Id: 't0',
+      team2Id: 't1',
+      round: 1,
+      winnerId: 't0',
+      sets: [
+        { team1: 21, team2: 15 },
+        { team1: 18, team2: 21 },
+        { team1: 21, team2: 19 }
+      ]
+    };
+    expect(matchPowerMarginForTeam(m, 't0')).toBe(6 + -3 + 2);
+    expect(matchPowerMarginForTeam(m, 't1')).toBe(-5);
+    expect(teamPowerStat('t0', [m])).toBe(5);
+  });
+
+  it('ignores matches without per-set scores', () => {
+    const m: Match = {
+      id: 'm1',
+      team1Id: 't0',
+      team2Id: 't1',
+      round: 1,
+      winnerId: 't0',
+      score1: 2,
+      score2: 0
+    };
+    expect(teamPowerStat('t0', [m])).toBe(0);
   });
 });
 

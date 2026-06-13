@@ -36,6 +36,7 @@ import {
   where, 
   getDocs,
   deleteDoc,
+  writeBatch,
   serverTimestamp 
 } from 'firebase/firestore';
 import { onAuthStateChanged, User, signOut } from 'firebase/auth';
@@ -50,7 +51,7 @@ import { validateBracketSeed } from './lib/validateBracket';
 import { formatFirebaseError } from './lib/firebaseErrors';
 import { matchToFirestore } from './lib/matchFirestore';
 import { matchesNeedNetReconcile, reconcileMatchNets } from './lib/reconcileNets';
-import { readLocalStorageJson, normalizeActiveNets } from './lib/persistence';
+import { readLocalStorageJson, normalizeActiveNets, clearPersistedTournamentProgress } from './lib/persistence';
 import { DEFAULT_RULES, sanitizeRules } from './lib/tournament/rules';
 import { getChangedMatches, matchesSyncEqual, teamsSyncEqual } from './lib/matchSync';
 
@@ -62,6 +63,25 @@ const DEFAULT_LOCAL_TEAMS: Team[] = [
 ];
 
 const POINTS_OPTIONS = [25, 21, 15] as const;
+
+async function deleteTournamentMatches(tid: string): Promise<void> {
+  if (!db) return;
+  const snapshot = await getDocs(collection(db, 'tournaments', tid, 'matches'));
+  const docs = snapshot.docs;
+  for (let i = 0; i < docs.length; i += 500) {
+    const batch = writeBatch(db);
+    for (const d of docs.slice(i, i + 500)) {
+      batch.delete(d.ref);
+    }
+    await batch.commit();
+  }
+}
+
+function waitForListenerTeardown(): Promise<void> {
+  return new Promise(resolve => {
+    setTimeout(resolve, 0);
+  });
+}
 
 export default function App() {
   const savedCloudId =
@@ -129,6 +149,7 @@ export default function App() {
   );
   const [banner, setBanner] = useState<BannerMessage>(null);
   const reconcileKeyRef = useRef<string | null>(null);
+  const suppressCloudSyncRef = useRef(false);
   const scoringMatchesRef = useRef<Set<string>>(new Set());
   const teamNameTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const syncRef = useRef({ isCreator, isStarted, isFinished, format, numNets });
@@ -215,6 +236,7 @@ export default function App() {
     if (!tournamentId || !db) return;
 
     const unsubTournament = onSnapshot(doc(db, 'tournaments', tournamentId), (snapshot) => {
+      if (suppressCloudSyncRef.current) return;
       if (!snapshot.exists()) {
         setTournamentId(null);
         setMatches([]);
@@ -276,6 +298,7 @@ export default function App() {
     const unsubTeams = onSnapshot(
       collection(db, 'tournaments', tournamentId, 'teams'),
       snapshot => {
+        if (suppressCloudSyncRef.current) return;
         const teamsData = snapshot.docs.map(d => {
           const data = d.data() as Team;
           return { ...data, id: data.id ?? d.id };
@@ -293,6 +316,7 @@ export default function App() {
     const unsubMatches = onSnapshot(
       collection(db, 'tournaments', tournamentId, 'matches'),
       snapshot => {
+        if (suppressCloudSyncRef.current) return;
         let matchesData = snapshot.docs.map(d => {
           const data = d.data() as Match;
           return { ...data, id: data.id ?? d.id };
@@ -646,31 +670,42 @@ export default function App() {
   };
 
   const abortTournament = async () => {
-    if (window.confirm("Are you sure you want to abort the tournament and return home? All progress will be lost.")) {
-      try {
-        if (tournamentId && db) {
-          const matchesRef = collection(db, 'tournaments', tournamentId, 'matches');
-          const snapshot = await getDocs(matchesRef);
-          await Promise.all(snapshot.docs.map(d => deleteDoc(d.ref)));
+    if (!window.confirm('Are you sure you want to abort the tournament and return home? All progress will be lost.')) {
+      return;
+    }
 
-          await updateDoc(doc(db, 'tournaments', tournamentId), {
-            isStarted: false,
-            isFinished: false,
-            queue: [],
-            activeNets: {}
-          });
-        }
-        setIsStarted(false);
-        setIsFinished(false);
-        setMatches([]);
-        setQueue([]);
-        setActiveNets({});
-        setTournamentId(null);
-        reconcileKeyRef.current = null;
-      } catch (err) {
-        console.error('[abortTournament] failed:', err);
-        setBanner({ type: 'error', message: formatFirebaseError(err) });
-      }
+    const tid = tournamentId;
+    suppressCloudSyncRef.current = true;
+    setIsStarted(false);
+    setIsFinished(false);
+    setMatches([]);
+    setQueue([]);
+    setActiveNets({});
+    setTournamentId(null);
+    setInviteCode('');
+    setCloudSyncing(false);
+    reconcileKeyRef.current = null;
+    clearPersistedTournamentProgress();
+
+    if (!tid || !db) {
+      suppressCloudSyncRef.current = false;
+      return;
+    }
+
+    try {
+      await waitForListenerTeardown();
+      await deleteTournamentMatches(tid);
+      await updateDoc(doc(db, 'tournaments', tid), {
+        isStarted: false,
+        isFinished: false,
+        queue: [],
+        activeNets: {}
+      });
+    } catch (err) {
+      console.error('[abortTournament] failed:', err);
+      setBanner({ type: 'error', message: formatFirebaseError(err) });
+    } finally {
+      suppressCloudSyncRef.current = false;
     }
   };
 
@@ -689,55 +724,63 @@ export default function App() {
   };
 
   const restartTournament = async () => {
-    if (window.confirm("Start over? This will clear all current scores and matches.")) {
-      try {
-        if (tournamentId && db) {
-          const matchesRef = collection(db, 'tournaments', tournamentId, 'matches');
-          const snapshot = await getDocs(matchesRef);
-          await Promise.all(snapshot.docs.map(d => deleteDoc(d.ref)));
+    if (!window.confirm('Start over? This will clear all current scores and matches.')) return;
 
-          await updateDoc(doc(db, 'tournaments', tournamentId), {
-            isStarted: false,
-            isFinished: false,
-            queue: [],
-            activeNets: {}
-          });
-        }
+    const tid = tournamentId;
+    suppressCloudSyncRef.current = true;
+    setMatches([]);
+    setQueue([]);
+    setActiveNets({});
+    setIsStarted(false);
+    setIsFinished(false);
+    reconcileKeyRef.current = null;
 
-        setMatches([]);
-        setQueue([]);
-        setActiveNets({});
-        setIsStarted(false);
-        setIsFinished(false);
-        reconcileKeyRef.current = null;
-        await startTournament();
-      } catch (err) {
-        console.error('[restartTournament] failed:', err);
-        setBanner({ type: 'error', message: formatFirebaseError(err) });
+    try {
+      if (tid && db) {
+        await waitForListenerTeardown();
+        await deleteTournamentMatches(tid);
+        await updateDoc(doc(db, 'tournaments', tid), {
+          isStarted: false,
+          isFinished: false,
+          queue: [],
+          activeNets: {}
+        });
       }
+      suppressCloudSyncRef.current = false;
+      await startTournament();
+    } catch (err) {
+      suppressCloudSyncRef.current = false;
+      console.error('[restartTournament] failed:', err);
+      setBanner({ type: 'error', message: formatFirebaseError(err) });
     }
   };
 
   const resetToSetup = async () => {
+    if (!matches.length && !tournamentId && !isStarted && !isFinished) return;
     if (!window.confirm('Start a new tournament? This will clear current results.')) return;
 
     const tid = tournamentId;
+    suppressCloudSyncRef.current = true;
     setMatches([]);
     setQueue([]);
     setActiveNets({});
     setIsStarted(false);
     setIsFinished(false);
     setTournamentId(null);
+    setInviteCode('');
+    setCloudSyncing(false);
     reconcileKeyRef.current = null;
-    localStorage.removeItem('tournament_id');
+    clearPersistedTournamentProgress();
 
-    if (!tid || !db) return;
+    if (!tid || !db) {
+      suppressCloudSyncRef.current = false;
+      return;
+    }
 
     void (async () => {
       try {
-        const matchesRef = collection(db, 'tournaments', tid, 'matches');
-        const snapshot = await getDocs(matchesRef);
-        await Promise.all(snapshot.docs.map(d => deleteDoc(d.ref)));
+        await waitForListenerTeardown();
+        await deleteTournamentMatches(tid);
         await updateDoc(doc(db, 'tournaments', tid), {
           isStarted: false,
           isFinished: false,
@@ -747,6 +790,8 @@ export default function App() {
       } catch (err) {
         console.error('[resetToSetup] failed:', err);
         setBanner({ type: 'error', message: formatFirebaseError(err) });
+      } finally {
+        suppressCloudSyncRef.current = false;
       }
     })();
   };
@@ -1153,31 +1198,33 @@ export default function App() {
   };
 
   const resetTournament = async () => {
-    if (window.confirm("Are you sure you want to reset the tournament? All scores will be lost.")) {
-      try {
-        if (tournamentId && db) {
-          const matchesRef = collection(db, 'tournaments', tournamentId, 'matches');
-          const snapshot = await getDocs(matchesRef);
-          await Promise.all(snapshot.docs.map(d => deleteDoc(d.ref)));
+    if (!window.confirm('Are you sure you want to reset the tournament? All scores will be lost.')) return;
 
-          await updateDoc(doc(db, 'tournaments', tournamentId), {
-            isStarted: false,
-            isFinished: false,
-            queue: [],
-            activeNets: {}
-          });
-        }
+    const tid = tournamentId;
+    suppressCloudSyncRef.current = true;
+    setIsStarted(false);
+    setIsFinished(false);
+    setMatches([]);
+    setQueue([]);
+    setActiveNets({});
+    reconcileKeyRef.current = null;
 
-        setIsStarted(false);
-        setIsFinished(false);
-        setMatches([]);
-        setQueue([]);
-        setActiveNets({});
-        reconcileKeyRef.current = null;
-      } catch (err) {
-        console.error('[resetTournament] failed:', err);
-        setBanner({ type: 'error', message: formatFirebaseError(err) });
+    try {
+      if (tid && db) {
+        await waitForListenerTeardown();
+        await deleteTournamentMatches(tid);
+        await updateDoc(doc(db, 'tournaments', tid), {
+          isStarted: false,
+          isFinished: false,
+          queue: [],
+          activeNets: {}
+        });
       }
+    } catch (err) {
+      console.error('[resetTournament] failed:', err);
+      setBanner({ type: 'error', message: formatFirebaseError(err) });
+    } finally {
+      suppressCloudSyncRef.current = false;
     }
   };
 

@@ -1,4 +1,5 @@
 import type { Match, Team } from '../../types';
+import { teamPowerStat } from './records';
 
 /** Smallest power of 2 ≥ n (n ≥ 1 → ≥ 1). */
 export function nextPowerOf2AtLeast(n: number): number {
@@ -281,18 +282,6 @@ export function casualRoundIsComplete(matches: Match[], round: number): boolean 
   return slice.length > 0 && slice.every(m => m.winnerId);
 }
 
-function casualPointDiffForTeam(teamId: string, completed: Match[]): number {
-  let d = 0;
-  for (const m of completed) {
-    if (m.team1Id === teamId) {
-      d += (m.score1 ?? 0) - (m.score2 ?? 0);
-    } else if (m.team2Id === teamId) {
-      d += (m.score2 ?? 0) - (m.score1 ?? 0);
-    }
-  }
-  return d;
-}
-
 /**
  * Wave 1: everyone plays once (random-ish pairs). Odd team count → one bye match for that wave.
  */
@@ -327,7 +316,7 @@ export function generateCasualFirstRound(teams: Team[]): Match[] {
 }
 
 /**
- * Next wave after all prior rounds are done: sort by wins then point diff, pair 1v2, 3v4…
+ * Next wave after all prior rounds are done: sort by wins then power (rally-point margin), pair 1v2, 3v4…
  * (soft “winners vs winners” — ties break by team id, no stakes).
  */
 export function buildNextCasualRound(teams: Team[], allMatches: Match[], nextRound: number): Match[] {
@@ -337,10 +326,10 @@ export function buildNextCasualRound(teams: Team[], allMatches: Match[], nextRou
   const stats = teams.map(t => {
     const played = completed.filter(m => m.team1Id === t.id || m.team2Id === t.id);
     const wins = played.filter(m => m.winnerId === t.id).length;
-    const diff = casualPointDiffForTeam(t.id, played);
-    return { id: t.id, wins, diff };
+    const power = teamPowerStat(t.id, played);
+    return { id: t.id, wins, power };
   });
-  stats.sort((a, b) => b.wins - a.wins || b.diff - a.diff || a.id.localeCompare(b.id));
+  stats.sort((a, b) => b.wins - a.wins || b.power - a.power || a.id.localeCompare(b.id));
 
   const nonce = `${Date.now()}`;
   const out: Match[] = [];

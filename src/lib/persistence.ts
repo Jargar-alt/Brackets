@@ -27,3 +27,17 @@ export function normalizeActiveNets(
   }
   return out;
 }
+
+/** Immediately clear saved bracket progress (avoids debounced persistence restoring stale data). */
+export function clearPersistedTournamentProgress(): void {
+  try {
+    localStorage.removeItem('tournament_id');
+    localStorage.setItem('tournament_matches', '[]');
+    localStorage.setItem('tournament_queue', '[]');
+    localStorage.setItem('tournament_activeNets', '{}');
+    localStorage.setItem('tournament_isStarted', 'false');
+    localStorage.setItem('tournament_isFinished', 'false');
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
